@@ -56,12 +56,12 @@ namespace DieHarder
 
             IsAnimationRunning = true;
 
-            Core.Instance.StoredCameraInfos = Core.FindAllCameras();
+            Core.Instance.StoredCameraInfos = Core.GenerateCamInfos();
             foreach (CameraInfo cameraInfo in Core.Instance.StoredCameraInfos)
             {
                 Camera parentComponent = cameraInfo.ParentComponent;
                 parentComponent.cullingMask = 1 << Core.Instance.VisualLayer;
-                if (parentComponent.IsFirstPerson()) parentComponent.nearClipPlane = 0.1f;
+                if (parentComponent.IsFirstPerson()) parentComponent.nearClipPlane = 0.01f;
             }
 
             fogEnabledStorage = RenderSettings.fog;
@@ -104,7 +104,7 @@ namespace DieHarder
                 cameraInfo.ParentComponent.nearClipPlane = cameraInfo.NearClipPlane;
             }
 
-            //GameObject.Destroy(SphereBackground);
+            GameObject.Destroy(SphereBackground);
 
             RenderSettings.fog = fogEnabledStorage;
 
@@ -194,12 +194,12 @@ namespace DieHarder
             }
 
             HelperFunctions.DisableAllComponents(gameObject, new List<Behaviour>{ this, GetComponent<RigDefinition>() });
-            if (ParentController.controllerType != Il2CppRUMBLE.Players.ControllerType.Local)
+            if (ParentController.controllerType == Il2CppRUMBLE.Players.ControllerType.Local)
             {
                 GameObject newCam = new GameObject("Camera");
                 newCam.transform.SetParent(transform);
-                newCam.transform.position = ParentController.GetCamera().transform.position;
                 Camera = newCam.AddComponent<Camera>();
+                Camera.depth = -10;
                 Camera.enabled = false;
                 Camera.cullingMask = 1 << Core.Instance.VisualLayer;
             }
@@ -210,6 +210,7 @@ namespace DieHarder
         {
             List<BoneDefinition> parentBones = ParentController.GetBones();
             List<BoneDefinition> myBones = GetComponent<RigDefinition>().BoneDefinitions.ToList();
+            Camera.transform.position = ParentController.GetCamera().transform.position;
 
             for (int i = 0; i < parentBones.Count; i++)
             {

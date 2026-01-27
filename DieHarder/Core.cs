@@ -64,7 +64,7 @@ namespace DieHarder
                 if (_secondarySilhouetteMat == null)
                 {
                     _secondarySilhouetteMat = new Material(Shader.Find("Universal Render Pipeline/Unlit"));
-                    _secondarySilhouetteMat.SetFloat("__cull", 1);
+                    _secondarySilhouetteMat.SetInt("_Cull", 1);
                     _secondarySilhouetteMat.color = Color.white;
                     _secondarySilhouetteMat.hideFlags = HideFlags.HideAndDontSave & HideFlags.DontUnloadUnusedAsset;
                 }

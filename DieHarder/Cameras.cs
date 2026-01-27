@@ -20,20 +20,28 @@ namespace DieHarder
         public LayerMask VisualLayer = LayerMask.NameToLayer("Clouds");
         //public LayerMask PhysicsLayer = LayerMask.NameToLayer("Clouds");
 
-        public static List<CameraInfo> FindAllCameras()
+        public static List<CameraInfo> GenerateCamInfos()
         {
             List<CameraInfo> cameraInfos = new();
 
-            cameraInfos.Add(new CameraInfo(PlayerManager.Instance.LocalPlayer.Controller.GetCamera(), true));
-            cameraInfos.Add(new CameraInfo(RecordingCamera.Instance.LegacyCamera));
-            Camera livCam = LivCaptureService.Service?.render?.cameraInstance;
-            if (livCam != null) cameraInfos.Add(new CameraInfo(livCam));
-            LCKTabletUtility lckTabletUtility = PlayerManager.Instance.LocalPlayer.Controller.GetSubsystem<PlayerLIV>().LckTablet;
-            if (lckTabletUtility != null)
+            //cameraInfos.Add(new CameraInfo(PlayerManager.Instance.LocalPlayer.Controller.GetCamera(), true));
+            //cameraInfos.Add(new CameraInfo(RecordingCamera.Instance.LegacyCamera));
+            //Camera livCam = LivCaptureService.Service?.render?.cameraInstance;
+            //if (livCam != null) cameraInfos.Add(new CameraInfo(livCam));
+            //LCKTabletUtility lckTabletUtility = PlayerManager.Instance.LocalPlayer.Controller.GetSubsystem<PlayerLIV>().LckTablet;
+            //if (lckTabletUtility != null)
+            //{
+            //    cameraInfos.Add(new CameraInfo(lckTabletUtility.firstPersonCamera._camera));
+            //    cameraInfos.Add(new CameraInfo(lckTabletUtility.selfieCamera._camera));
+            //    cameraInfos.Add(new CameraInfo(lckTabletUtility.thirdPersonCamera._camera));
+            //}
+
+            //return cameraInfos;
+
+            foreach (Camera camera in Camera.allCameras)
             {
-                cameraInfos.Add(new CameraInfo(lckTabletUtility.firstPersonCamera._camera));
-                cameraInfos.Add(new CameraInfo(lckTabletUtility.selfieCamera._camera));
-                cameraInfos.Add(new CameraInfo(lckTabletUtility.thirdPersonCamera._camera));
+                bool isVRCam = camera == PlayerManager.Instance.LocalPlayer.Controller.GetCamera();
+                cameraInfos.Add(new CameraInfo(camera, isVRCam));
             }
 
             return cameraInfos;
