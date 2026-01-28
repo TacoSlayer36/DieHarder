@@ -6,12 +6,34 @@
 
 	<ItemGroup>
 		<Reference Include="C:\Program Files (x86)\Steam\steamapps\common\RUMBLE\MelonLoader\**\*.dll" Private="false" />
+		<None Remove="assets\dieharder" />
+		<EmbeddedResource Include="assets\dieharder" />
 		<PackageReference Include="BepInEx.AssemblyPublicizer.MSBuild" Version="0.4.3">
 			<PrivateAssets>all</PrivateAssets>
 			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
 		</PackageReference>
 		<Reference Include="ModUI">
 			<HintPath>C:\Program Files (x86)\Steam\steamapps\common\RUMBLE\Mods\ModUI.dll</HintPath>
+		</Reference>
+		<Reference Include="NAudio">
+		  <HintPath>..\..\..\..\..\..\Program Files (x86)\Steam\steamapps\common\RUMBLE\UserLibs\NAudio.dll</HintPath>
+		  <EmbedInteropTypes>False</EmbedInteropTypes>
+		</Reference>
+		<Reference Include="NAudio.Core">
+		  <HintPath>..\..\..\..\..\..\Program Files (x86)\Steam\steamapps\common\RUMBLE\UserLibs\NAudio.Core.dll</HintPath>
+		  <EmbedInteropTypes>False</EmbedInteropTypes>
+		</Reference>
+		<Reference Include="NAudio.Wasapi">
+		  <HintPath>..\..\..\..\..\..\Program Files (x86)\Steam\steamapps\common\RUMBLE\UserLibs\NAudio.Wasapi.dll</HintPath>
+		  <EmbedInteropTypes>False</EmbedInteropTypes>
+		</Reference>
+		<Reference Include="NAudio.WinForms">
+		  <HintPath>..\..\..\..\..\..\Program Files (x86)\Steam\steamapps\common\RUMBLE\UserLibs\NAudio.WinForms.dll</HintPath>
+		  <EmbedInteropTypes>False</EmbedInteropTypes>
+		</Reference>
+		<Reference Include="NAudio.WinMM">
+		  <HintPath>..\..\..\..\..\..\Program Files (x86)\Steam\steamapps\common\RUMBLE\UserLibs\NAudio.WinMM.dll</HintPath>
+		  <EmbedInteropTypes>False</EmbedInteropTypes>
 		</Reference>
 		<Reference Include="RumbleModdingAPI">
 			<HintPath>C:\Program Files (x86)\Steam\steamapps\common\RUMBLE\Mods\RumbleModdingAPI.dll</HintPath>

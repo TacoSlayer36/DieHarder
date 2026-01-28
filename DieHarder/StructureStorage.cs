@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using Il2CppRUMBLE.MoveSystem;
+using System.Collections.Generic;
 using System.Text.RegularExpressions;
 using UnityEngine;
 
@@ -75,6 +76,30 @@ namespace DieHarder
             }
 
             return structures;
+        }
+    }
+
+    public class StructureKillStorage
+    {
+        Structure __instance = null;
+        Vector3 killVelocity;
+        bool playSFX;
+        bool playVFX;
+        bool networked;
+
+        public void Kill()
+        {
+            if (__instance != null)
+                __instance.Kill(killVelocity, playSFX, playVFX, networked);
+        }
+
+        public StructureKillStorage(Structure instance, Vector3 killVelocity, bool playSFX, bool playVFX, bool networked)
+        {
+            __instance = instance;
+            this.killVelocity = killVelocity;
+            this.playSFX = playSFX;
+            this.playVFX = playVFX;
+            this.networked = networked;
         }
     }
 }

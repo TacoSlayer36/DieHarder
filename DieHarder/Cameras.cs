@@ -24,24 +24,16 @@ namespace DieHarder
         {
             List<CameraInfo> cameraInfos = new();
 
-            //cameraInfos.Add(new CameraInfo(PlayerManager.Instance.LocalPlayer.Controller.GetCamera(), true));
-            //cameraInfos.Add(new CameraInfo(RecordingCamera.Instance.LegacyCamera));
-            //Camera livCam = LivCaptureService.Service?.render?.cameraInstance;
-            //if (livCam != null) cameraInfos.Add(new CameraInfo(livCam));
-            //LCKTabletUtility lckTabletUtility = PlayerManager.Instance.LocalPlayer.Controller.GetSubsystem<PlayerLIV>().LckTablet;
-            //if (lckTabletUtility != null)
-            //{
-            //    cameraInfos.Add(new CameraInfo(lckTabletUtility.firstPersonCamera._camera));
-            //    cameraInfos.Add(new CameraInfo(lckTabletUtility.selfieCamera._camera));
-            //    cameraInfos.Add(new CameraInfo(lckTabletUtility.thirdPersonCamera._camera));
-            //}
-
-            //return cameraInfos;
-
-            foreach (Camera camera in Camera.allCameras)
+            cameraInfos.Add(new CameraInfo(PlayerManager.Instance.LocalPlayer.Controller.GetCamera()){ IsVRCam = true });
+            cameraInfos.Add(new CameraInfo(RecordingCamera.Instance.LegacyCamera) { IsRecordingCam = true });
+            Camera livCam = LivCaptureService.Service?.render?.cameraInstance;
+            if (livCam != null) cameraInfos.Add(new CameraInfo(livCam));
+            LCKTabletUtility lckTabletUtility = PlayerManager.Instance.LocalPlayer.Controller.GetSubsystem<PlayerLIV>().LckTablet;
+            if (lckTabletUtility != null)
             {
-                bool isVRCam = camera == PlayerManager.Instance.LocalPlayer.Controller.GetCamera();
-                cameraInfos.Add(new CameraInfo(camera, isVRCam));
+                cameraInfos.Add(new CameraInfo(lckTabletUtility.firstPersonCamera._camera));
+                cameraInfos.Add(new CameraInfo(lckTabletUtility.selfieCamera._camera));
+                cameraInfos.Add(new CameraInfo(lckTabletUtility.thirdPersonCamera._camera));
             }
 
             return cameraInfos;
@@ -60,6 +52,7 @@ namespace DieHarder
 
         public bool IsFirstPerson => ParentComponent.IsFirstPerson();
         public bool IsVRCam = false;
+        public bool IsRecordingCam = false;
 
         public CameraInfo(Camera camera)
         {
@@ -68,16 +61,6 @@ namespace DieHarder
             FreezePos = camera.transform.position;
             FreezeRot = camera.transform.rotation;
             NearClipPlane = camera.nearClipPlane;
-        }
-
-        public CameraInfo(Camera camera, bool isVRCam)
-        {
-            CullingMask = camera.cullingMask;
-            ParentComponent = camera;
-            FreezePos = camera.transform.position;
-            FreezeRot = camera.transform.rotation;
-            NearClipPlane = camera.nearClipPlane;
-            IsVRCam = isVRCam;
         }
     }
 }

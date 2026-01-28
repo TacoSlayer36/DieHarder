@@ -1,6 +1,13 @@
-﻿using System.Collections.Generic;
+﻿using MelonLoader;
+using NAudio.Wave.SampleProviders;
+using NAudio.Wave;
+using System.Collections;
+using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
+using UnityEngine.Networking;
+using System.IO;
+using System.Text.RegularExpressions;
 
 namespace DieHarder
 {
@@ -18,18 +25,18 @@ namespace DieHarder
             return children;
         }
 
-        public static void DisableAllComponents(GameObject gameObject, List<Behaviour> except)
+        public static void DisableAllComponents(GameObject gameObject, List<Behaviour> except = null)
         {
             foreach (var behavior in gameObject.GetComponents<Behaviour>())
             {
-                if (!except.Contains(behavior))
-                    behavior.enabled = false;
+                behavior.enabled = except != null && except.Contains(behavior);
             }
         }
 
-        public static string SanitizeString(string input)
+        public static string SanitizeString(string Input)
         {
-            return new string(input.Where(c => char.IsLetter(c)).ToArray());
+            string pattern = @"<[^>]*>";
+            return Regex.Replace(Input, pattern, string.Empty);
         }
     }
 }

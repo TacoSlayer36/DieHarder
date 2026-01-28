@@ -1,9 +1,14 @@
 ﻿using HarmonyLib;
+using Il2CppRUMBLE.CharacterCreation.Interactable;
 using Il2CppRUMBLE.Managers;
+using Il2CppRUMBLE.MoveSystem;
+using Il2CppRUMBLE.Networking.MatchFlow;
 using Il2CppRUMBLE.Players;
 using Il2CppRUMBLE.Players.Scaling;
 using Il2CppRUMBLE.Players.Subsystems;
 using MelonLoader;
+using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
@@ -11,12 +16,52 @@ using UnityEngine.Playables;
 
 namespace DieHarder
 {
-    [HarmonyPatch(typeof(PlayerController), nameof(PlayerController.Initialize))]
-    public static class PlayerController_Initialize_Patch
+    [HarmonyPatch(typeof(PlayerVisuals), nameof(PlayerVisuals.ApplyPlayerVisuals), new Type[] { typeof(Il2CppRUMBLE.MeshGeneration.PlayerCharacterBaker.GeneratedPlayerVisuals) })]
+    public static class PlayerVisuals_ApplyPlayerVisuals_Patch
     {
-        private static void Postfix(ref Il2CppRUMBLE.Players.Player player)
+        private static void Prefix(ref PlayerVisuals __instance)
         {
-            Core.Instance.ProcessNewPlayer(player.Controller);
+            Core.Instance.ProcessNewPlayer(__instance.parentController);
+        }
+    }
+
+    [HarmonyPatch(typeof(MatchHandler), nameof(MatchHandler.StopMatch), new Type[] { typeof(bool) })]
+    public static class MatchHandler_StopMatch_Patch
+    {
+        private static void Prefix()
+        {
+            if (Core.Instance.IsInMatch && MatchHandler.Instance?.CurrentMatchPhase == MatchHandler.MatchPhase.MatchStart)
+            {
+                Debug.Log("MatchJustEnded set to true", true, 0);
+                Core.Instance.MatchJustEnded = true;
+            }
+        }
+    }
+
+    [HarmonyPatch(typeof(MatchHandler), nameof(MatchHandler.ExecuteNextRound), new Type[] {  })]
+    public static class MatchHandler_ExecuteNextRound_Patch
+    {
+        private static void Postfix()
+        {
+            Debug.Log("MatchJustEnded set to false", true, 0);
+            Core.Instance.MatchJustEnded = false;
+        }
+    }
+
+    [HarmonyPatch(typeof(Structure), nameof(Structure.Kill), new Type[] { typeof(Vector3), typeof(bool), typeof(bool), typeof(bool) })]
+    public static class Structure_Kill_Patch
+    {
+        private static bool Prefix(ref Structure __instance, ref Vector3 killVelocity, ref bool playSFX, ref bool playVFX, ref bool networked)
+        {
+            Debug.Log("Structures broken, MatchJustEnded: " + Core.Instance.MatchJustEnded, true, 0);
+            bool isAnimationRunning = Core.Instance.ActiveImpact != null && Core.Instance.ActiveImpact.IsAnimationRunning;
+            if (isAnimationRunning && Core.Instance.IsInMatch && Core.Instance.MatchJustEnded)
+            {
+                Debug.Log("Structure breaking paused", true, 0);
+                Core.Instance.StructureKillStorages.Add(new StructureKillStorage(__instance, killVelocity, playSFX, playVFX, networked));
+                return false;
+            }
+            else return true;
         }
     }
 
