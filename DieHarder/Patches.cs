@@ -24,6 +24,12 @@ namespace DieHarder
         {
             Core.Instance.ProcessNewPlayer(__instance.parentController);
         }
+
+        private static void Postfix(ref PlayerVisuals __instance)
+        {
+            if (__instance.parentController.controllerType == Il2CppRUMBLE.Players.ControllerType.Local)
+            Ragdoll.LocalHeadClippedMat = __instance.parentController.GetSubsystem<PlayerVisuals>().GetComponentInChildren<SkinnedMeshRenderer>().material;
+        }
     }
 
     [HarmonyPatch(typeof(MatchHandler), nameof(MatchHandler.StopMatch), new Type[] { typeof(bool) })]
@@ -39,8 +45,7 @@ namespace DieHarder
 
         static IEnumerator SetMatchHasEnded()
         {
-            yield return new WaitForFixedUpdate();
-            yield return new WaitForFixedUpdate();
+            yield return new WaitForSeconds(1.5f);
             Core.Instance.HasMatchEnded = true;
         }
     }
@@ -51,6 +56,7 @@ namespace DieHarder
         private static void Postfix()
         {
             Core.Instance.HasMatchEnded = false;
+            Ragdoll.ClearAllRagdolls();
         }
     }
 

@@ -2,14 +2,12 @@
 using Il2CppRUMBLE.Managers;
 using Il2CppRUMBLE.Players;
 using Il2CppRUMBLE.Players.Scaling;
-using Il2CppRUMBLE.Players.Subsystems;
 using Il2CppRUMBLE.Utilities;
 using MelonLoader;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
-using UnityEngine.VFX;
 
 namespace DieHarder
 {
@@ -55,7 +53,6 @@ namespace DieHarder
 
         public void RunAnimation()
         {
-            if (IsAnimationRunning) CancelAnimation();
             AnimationCoroutine = MelonCoroutines.Start(C_RunAnimation());
         }
 
@@ -112,7 +109,9 @@ namespace DieHarder
 
             // Create ragdoll
             if (ModUISettings.DoSpawnRagdolls)
-                Ragdoll.SpawnRagdoll(DamagedPlayer.ParentController, InvolvedStructure);
+            {
+                Ragdoll newRagdoll = Ragdoll.SpawnRagdoll(DamagedPlayer.ParentController, InvolvedStructure);
+            }
 
             // Flash the screen again
             ScreenFlash.CreateScreenFlash(PlayerManager.Instance.LocalPlayer.Controller.GetCamera().transform, LayerMask.NameToLayer("PlayerController"));
@@ -317,11 +316,6 @@ namespace DieHarder
             foreach (var c in Visuals.GetComponentsInChildren<Collider>())
             {
                 c.enabled = false;
-            }
-
-            if (Type == VisualsType.Ragdoll)
-            {
-                Visuals.GetComponentInChildren<SkinnedMeshRenderer>().material = ParentController.GetSubsystem<PlayerVisuals>().NonHeadClippedMaterial;
             }
 
             HelperFunctions.DisableAllComponents(Visuals, new List<Behaviour>{ this, Visuals.GetComponent<RigDefinition>() });

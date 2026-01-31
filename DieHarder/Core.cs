@@ -8,6 +8,7 @@
  * Heads are dangly
  * Shiftstones on ragdolls
  * Structures break from shockwave
+ * Dressing room breaks things
 */
 
 using RumbleModdingAPI;
@@ -107,6 +108,20 @@ namespace DieHarder
                 return _secondarySilhouetteMat;
             }
         }
+        public Shader GhostShader;
+        private Material _ghostMat;
+        public Material GhostMat
+        {
+            get
+            {
+                if (_ghostMat == null)
+                {
+                    _ghostMat = new Material(GhostShader);
+                    _ghostMat.hideFlags = HideFlags.HideAndDontSave & HideFlags.DontUnloadUnusedAsset;
+                }
+                return _ghostMat;
+            }
+        }
 
         public const string ImpactAudioPath = "UserData/" + BuildInfo.Name + "/impact.mp3";
         public const string PreImpactAudioPath = "UserData/" + BuildInfo.Name + "/pre-impact.mp3";
@@ -129,6 +144,8 @@ namespace DieHarder
             SilhouetteShader.hideFlags = HideFlags.HideAndDontSave & HideFlags.DontUnloadUnusedAsset;
             ShockwaveShader = Calls.LoadAssetFromStream<Shader>(this, "DieHarder.assets.dieharder", "Shockwave");
             ShockwaveShader.hideFlags = HideFlags.HideAndDontSave & HideFlags.DontUnloadUnusedAsset;
+            GhostShader = Calls.LoadAssetFromStream<Shader>(this, "DieHarder.assets.dieharder", "Ghost");
+            GhostShader.hideFlags = HideFlags.HideAndDontSave & HideFlags.DontUnloadUnusedAsset;
         }
 
         public override void OnUpdate()
@@ -143,14 +160,11 @@ namespace DieHarder
                 if (Input.GetKey(KeyCode.LeftShift) && Input.GetKeyDown(KeyCode.T))
                 {
                     Ragdoll raggy = Ragdoll.SpawnRagdoll(PlayerManager.Instance.localPlayer.Controller, FindClosestStructure(PlayerManager.Instance.LocalPlayer.Controller));
-                }
-
-                if (Input.GetKeyDown(KeyCode.Y))
-                {
-                    foreach (var s in StructureStorages)
+                    if (Input.GetKey(KeyCode.LeftControl))
                     {
-                        MelonLogger.Msg($"{s} | {s.StructureGO.GetComponentInChildren<Rigidbody>().mass}");
-                        MelonLogger.Msg("Player: " + PlayerManager.Instance.LocalPlayer.Controller.GetSubsystem<PlayerPhysics>().physicsRigidbody.mass);
+                        raggy.GhostifyOwner();
+                        raggy.UndoGhostOnClear = true;
+                        raggy.ClearAfter(10f);
                     }
                 }
             }
@@ -237,6 +251,13 @@ namespace DieHarder
             {
                 Ragdoll newRagdoll = Ragdoll.SpawnRagdoll(damagedPlayer);
                 newRagdoll.Hit(FindClosestStructure(damagedPlayer));
+                newRagdoll.UndoGhostOnClear = true;
+                newRagdoll.GhostifyOwner();
+                if (!IsInMatch)
+                {
+                    newRagdoll.UndoGhostOnClear = true;
+                    newRagdoll.ClearAfter(5f);
+                }
             }
         }
 

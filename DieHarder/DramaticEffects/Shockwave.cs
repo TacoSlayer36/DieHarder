@@ -43,7 +43,7 @@ namespace DieHarder
             {
                 if (Timer <= 0.5f)
                 {
-                    forceFieldScale += Time.deltaTime * 200f;
+                    forceFieldScale += Time.deltaTime * 150f;
                     forceFieldProximityDistance += Time.deltaTime;
                 }
                 else

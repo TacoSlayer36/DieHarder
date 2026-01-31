@@ -164,12 +164,15 @@ namespace DieHarder
             int tries = 0;
             while (tries++ < 500)
             {
+                if (shockwave == null) break;
+
                 foreach (StructureKillStorage killStorage in Core.Instance.StructureKillStorages)
                 {
+                    if (killStorage.__instance == null) continue;
+
                     float distFromShockwave = Vector3.Distance(killStorage.__instance.transform.position, shockwave.transform.position);
                     float shockwaveSize = shockwave.transform.localScale.x;
 
-                    MelonLogger.Msg(distFromShockwave + " | " + shockwaveSize);
                     if (distFromShockwave < shockwaveSize)
                     {
                         killStorage.Kill();

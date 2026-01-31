@@ -14,10 +14,14 @@ namespace DieHarder
     [RegisterTypeInIl2Cpp]
     public class Ragdoll : PlayerVisualsClone
     {
+        private static Dictionary<PlayerController, RagdollPool> ragdollPools = new();
+        public static Material LocalHeadClippedMat = null;
+
         public List<BoneRef> BoneRefs = new();
         private Dictionary<Joint, Transform> boneAnchorCache = new();
-
-        private static Dictionary<PlayerController, RagdollPool> ragdollPools = new();
+        public float Age = 0f;
+        public float ClearAfterSeconds = 0f;
+        public bool UndoGhostOnClear = false;
 
         public static Ragdoll SpawnRagdoll(PlayerController player, StructureStorage killingStructure = null)
         {
@@ -45,6 +49,17 @@ namespace DieHarder
             return newPool;
         }
 
+        public static void ClearAllRagdolls()
+        {
+            foreach (RagdollPool pool in ragdollPools.Values)
+            {
+                foreach (Ragdoll ragdoll in pool.PoolItems)
+                {
+                    ragdoll.SetActive(false);
+                }
+            }
+        }
+
         public void SetupRagdoll()
         {
             Type = VisualsType.Ragdoll;
@@ -69,10 +84,15 @@ namespace DieHarder
                 }
             }
 
-            if (ParentController.ControllerType == Il2CppRUMBLE.Players.ControllerType.Local)
-                Visuals.GetComponentInChildren<Renderer>().material = ParentController.GetSubsystem<PlayerVisuals>().NonHeadClippedMaterial;
-            else
-                Visuals.GetComponentInChildren<Renderer>().material = ParentController.GetComponentInChildren<SkinnedMeshRenderer>().material;
+            PlayerVisuals parentPv = ParentController.GetSubsystem<PlayerVisuals>();
+            SkinnedMeshRenderer parentSmr = parentPv.GetComponentInChildren<SkinnedMeshRenderer>();
+            SkinnedMeshRenderer mySmr = Visuals.GetComponentInChildren<SkinnedMeshRenderer>();
+            if (ParentController.ControllerType != Il2CppRUMBLE.Players.ControllerType.Local)
+            {
+                parentPv.NonHeadClippedMaterial = parentSmr.material;
+                mySmr.material = new Material(parentPv.NonHeadClippedMaterial);
+            }
+            else mySmr.material = parentPv.NonHeadClippedMaterial;
 
             foreach (Rigidbody rb in GetComponentsInChildren<Rigidbody>())
             {
@@ -105,11 +125,22 @@ namespace DieHarder
 
         void Update()
         {
+            Age += Time.deltaTime;
+
             foreach (BoneRef boneRef in BoneRefs)
             {
                 boneRef.VisualBone.position = boneRef.RagdollBone.position;
                 boneRef.VisualBone.rotation = boneRef.RagdollBone.rotation;
                 boneRef.VisualBone.localScale = boneRef.RagdollBone.localScale;
+            }
+
+            if (ClearAfterSeconds > 0 && Age >= ClearAfterSeconds)
+            {
+                if (UndoGhostOnClear)
+                {
+                    UnGhostifyOwner();
+                }
+                SetActive(false);
             }
         }
 
@@ -180,6 +211,43 @@ namespace DieHarder
             }
         }
 
+        public void SetActive(bool active)
+        {
+            if (UndoGhostOnClear)
+            {
+                UnGhostifyOwner();
+            }
+            gameObject.SetActive(active);
+        }
+
+        public void GhostifyOwner()
+        {
+            SkinnedMeshRenderer smr = ParentController.GetSubsystem<PlayerVisuals>().GetComponentInChildren<SkinnedMeshRenderer>();
+            if (LocalHeadClippedMat == null)
+            {
+                LocalHeadClippedMat = smr.material;
+                LocalHeadClippedMat.hideFlags = HideFlags.HideAndDontSave | HideFlags.DontUnloadUnusedAsset;
+            }
+            smr.material = Core.Instance.GhostMat;
+            float isLocal = ParentController.ControllerType == Il2CppRUMBLE.Players.ControllerType.Local ? 1f : 0f;
+            smr.material.SetFloat("_IsLocal", isLocal);
+        }
+
+        public void UnGhostifyOwner()
+        {
+            PlayerVisuals pv = ParentController.GetSubsystem<PlayerVisuals>();
+            SkinnedMeshRenderer smr = pv.GetComponentInChildren<SkinnedMeshRenderer>();
+            if (ParentController.ControllerType == Il2CppRUMBLE.Players.ControllerType.Local)
+                smr.material = LocalHeadClippedMat;
+            else 
+                smr.material = pv.NonHeadClippedMaterial;
+        }
+
+        public void ClearAfter(float time)
+        {
+            ClearAfterSeconds = Age + time;
+        }
+
         private struct JointData
         {
             public Vector3 worldAnchor;
@@ -203,7 +271,7 @@ namespace DieHarder
         public class RagdollPool
         {
             public PlayerController parentController;
-            private List<Ragdoll> poolItems => Transform.GetComponentsInChildren<Ragdoll>().ToList();
+            public List<Ragdoll> PoolItems => Transform.GetComponentsInChildren<Ragdoll>().ToList();
             public Transform Transform;
 
             public Ragdoll FetchRagdoll()
@@ -216,7 +284,7 @@ namespace DieHarder
                 }
                 else
                 {
-                    List<Ragdoll> inactivePoolItems = poolItems.Where(pr => !pr.gameObject.activeSelf).ToList();
+                    List<Ragdoll> inactivePoolItems = PoolItems.Where(pr => !pr.gameObject.activeSelf).ToList();
                     if (inactivePoolItems.Count == 0) poolRagdoll = CreateRagdoll();
                     else poolRagdoll = inactivePoolItems.First();
                 }
