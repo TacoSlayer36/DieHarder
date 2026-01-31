@@ -175,6 +175,7 @@ namespace DieHarder
 
                     if (distFromShockwave < shockwaveSize)
                     {
+                        killStorage.killVelocity = (killStorage.__instance.transform.position - shockwave.transform.position).normalized * 5f;
                         killStorage.Kill();
                     }
                 }
