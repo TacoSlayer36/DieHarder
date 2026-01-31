@@ -196,6 +196,8 @@ namespace DieHarder
 
         public void Hit(StructureStorage killingStructure)
         {
+            if (killingStructure == null || killingStructure.StructureGO == null) return;
+
             Rigidbody chestRB = transform.GetChild(0).GetChild(0).GetChild(3).GetComponent<Rigidbody>();
             if (killingStructure.Velocity.magnitude > 0.01f)
             {
