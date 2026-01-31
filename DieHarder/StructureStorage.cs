@@ -2,6 +2,7 @@
 using Il2CppRUMBLE.MoveSystem;
 using Il2CppSystem;
 using MelonLoader;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.RegularExpressions;
@@ -15,6 +16,7 @@ namespace DieHarder
         public Vector3 Pos;
         public Quaternion Rot;
         public Vector3 Velocity;
+        public float Mass;
 
         public static List<GameObject> ProcessedStructuresForPhysics = new();
 
@@ -71,6 +73,8 @@ namespace DieHarder
 
                     Rigidbody rb = go.GetComponent<Rigidbody>();
                     Vector3 vel = rb?.velocity == null ? Vector3.zero : rb.velocity;
+                    float mass = rb?.mass == null ? 200f : rb.mass;
+                    if (structureType == StructureType.Disc) mass /= 2.5f;
 
                     StructureStorage newStorage = new StructureStorage
                     {
@@ -78,6 +82,7 @@ namespace DieHarder
                         Pos = go.transform.position,
                         Rot = go.transform.rotation,
                         Velocity = vel,
+                        Mass = mass,
                         Type = structureType,
                     };
                     structures.Add(newStorage);
@@ -127,37 +132,6 @@ namespace DieHarder
         }
     }
 
-    [RegisterTypeInIl2Cpp]
-    public class SubmissiveCollider : MonoBehaviour
-    {
-        Rigidbody self;
-
-        void Start()
-        {
-            self = GetComponent<Rigidbody>();
-        }
-
-        void OnCollisionEnter(Collision collision)
-        {
-            if (collision.gameObject.layer == LayerMask.NameToLayer("Move"))
-            {
-
-                Vector3 impulse = collision.impulse;
-                List<ContactPoint> contacts = new();
-                contacts = collision.contacts.ToList();
-
-                //impulse = impulse / contacts.Count; // number of contacts, length of the array
-
-                foreach (ContactPoint contact in contacts)
-                {
-                    self.AddForceAtPosition(contact.impulse, contact.point, ForceMode.Impulse);
-                    collision.rigidbody.AddForceAtPosition(contact.impulse, contact.point, ForceMode.Impulse);
-                    //contact.impulse = Vector3.zero;
-                }
-            }
-        }
-    }
-
     public class StructureKillStorage
     {
         Structure __instance = null;
@@ -170,6 +144,45 @@ namespace DieHarder
         {
             if (__instance != null)
                 __instance.Kill(killVelocity, playSFX, playVFX, networked);
+        }
+
+        public static IEnumerator C_KillStructuresFromShockwave()
+        {
+            yield return new WaitForFixedUpdate();
+            yield return new WaitForFixedUpdate();
+            GameObject shockwave = Core.Instance.ActiveShockwave.ForceField;
+
+            if (shockwave == null)
+            {
+                foreach (StructureKillStorage killStorage in Core.Instance.StructureKillStorages)
+                {
+                    killStorage.Kill();
+                }
+                yield break;
+            }
+
+            int tries = 0;
+            while (tries++ < 500)
+            {
+                foreach (StructureKillStorage killStorage in Core.Instance.StructureKillStorages)
+                {
+                    float distFromShockwave = Vector3.Distance(killStorage.__instance.transform.position, shockwave.transform.position);
+                    float shockwaveSize = shockwave.transform.localScale.x;
+
+                    MelonLogger.Msg(distFromShockwave + " | " + shockwaveSize);
+                    if (distFromShockwave < shockwaveSize)
+                    {
+                        killStorage.Kill();
+                    }
+                }
+
+                yield return new WaitForFixedUpdate();
+            }
+
+            foreach (StructureKillStorage killStorage in Core.Instance.StructureKillStorages)
+                killStorage.Kill();
+
+            Core.Instance.StructureKillStorages.Clear();
         }
 
         public StructureKillStorage(Structure instance, Vector3 killVelocity, bool playSFX, bool playVFX, bool networked)

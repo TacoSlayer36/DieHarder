@@ -37,6 +37,8 @@ namespace DieHarder
         {
             for (int i = 0; i < from.Count; i++)
             {
+                if (to.Count < i && from.Count < 1) continue;
+
                 to[i].position = from[i].position;
                 to[i].rotation = from[i].rotation;
                 to[i].localScale = from[i].localScale;

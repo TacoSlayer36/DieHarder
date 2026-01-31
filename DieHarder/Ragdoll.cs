@@ -3,10 +3,11 @@ using Il2CppRUMBLE.Players;
 using Il2CppRUMBLE.Players.Scaling;
 using Il2CppRUMBLE.Players.Subsystems;
 using MelonLoader;
-using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
+using UnityEngine.UI;
 
 namespace DieHarder
 {
@@ -14,18 +15,34 @@ namespace DieHarder
     public class Ragdoll : PlayerVisualsClone
     {
         public List<BoneRef> BoneRefs = new();
-
         private Dictionary<Joint, Transform> boneAnchorCache = new();
 
-        public static GameObject CreateRagdoll(PlayerController player)
+        private static Dictionary<PlayerController, RagdollPool> ragdollPools = new();
+
+        public static Ragdoll SpawnRagdoll(PlayerController player, StructureStorage killingStructure = null)
         {
-            GameObject newGo = GameObject.Instantiate(Core.Instance.ModObject_DDOLRagdoll);
-            newGo.name = HelperFunctions.SanitizeString(player.assignedPlayer.Data.GeneralData.PublicUsername + "Ragdoll");
+            Ragdoll newRagdoll;
+            RagdollPool ownerPool = FindOrCreateRagdollPool(player);
+            newRagdoll = ownerPool.FetchRagdoll();
+
+            if (killingStructure != null)
+            {
+                newRagdoll.Hit(killingStructure);
+            }
+
+            return newRagdoll;
+        }
+
+        public static RagdollPool FindOrCreateRagdollPool(PlayerController player)
+        {
+            if (ragdollPools.ContainsKey(player)) return ragdollPools[player];
+            
+            string sanitizedName = HelperFunctions.SanitizeString(player.assignedPlayer.Data.GeneralData.PublicUsername + "RagdollPool");
+            GameObject newGo = new GameObject(sanitizedName);
             newGo.transform.SetParent(Core.Instance.ModObject_Ragdolls.transform);
-            Ragdoll newRagdoll = newGo.AddComponent<Ragdoll>();
-            newRagdoll.ParentController = player;
-            newRagdoll.SetupRagdoll();
-            return newGo;
+            RagdollPool newPool = new RagdollPool { parentController = player, Transform = newGo.transform };
+            ragdollPools[player] = newPool;
+            return newPool;
         }
 
         public void SetupRagdoll()
@@ -52,16 +69,19 @@ namespace DieHarder
                 }
             }
 
+            if (ParentController.ControllerType == Il2CppRUMBLE.Players.ControllerType.Local)
+                Visuals.GetComponentInChildren<Renderer>().material = ParentController.GetSubsystem<PlayerVisuals>().NonHeadClippedMaterial;
+            else
+                Visuals.GetComponentInChildren<Renderer>().material = ParentController.GetComponentInChildren<SkinnedMeshRenderer>().material;
+
             foreach (Rigidbody rb in GetComponentsInChildren<Rigidbody>())
             {
                 string[] layers = new string[] { "Floor", "CombatFloor", "Environment", "LeanableEnvironment", "PedestalFloor" };
                 rb.includeLayers = new LayerMask().AddToMask(layers);
-                rb.includeLayers = rb.includeLayers | Core.Instance.PhysicsLayerMask;
-                rb.excludeLayers = LayerMask.GetMask("Move");
+                rb.excludeLayers = LayerMask.GetMask("Move", "PlayerController", "PlayerHitbox", "PlayerPhysicsBone", "PlayerFeet", "PlayerOnPlayerInteraction");
+                rb.excludeLayers = rb.excludeLayers | Core.Instance.PhysicsLayerMask;
                 rb.gameObject.layer = Core.Instance.PhysicsLayer;
                 rb.ResetCenterOfMass();
-
-                //rb.gameObject.AddComponent<SubmissiveCollider>();
             }
 
             MelonCoroutines.Start(C_EnableCollideWithPlayers(0.5f));
@@ -74,10 +94,12 @@ namespace DieHarder
         {
             yield return new WaitForSeconds(waitTime);
 
-            foreach (Rigidbody rb in GetComponentsInChildren<Rigidbody>())
+            foreach (Rigidbody rb in transform.GetChild(0).GetComponentsInChildren<Rigidbody>())
             {
-                string[] layers = new string[] { "PlayerOnPlayerInteraction" };
-                rb.includeLayers = rb.includeLayers.AddToMask(layers);
+                rb.excludeLayers = rb.excludeLayers.RemoveFromMask(new string[] { "PlayerOnPlayerInteraction" });
+                rb.excludeLayers = rb.excludeLayers & ~Core.Instance.PhysicsLayerMask;
+                rb.includeLayers = rb.includeLayers.AddToMask(new string[] { "PlayerOnPlayerInteraction" });
+                rb.includeLayers = rb.includeLayers | Core.Instance.PhysicsLayerMask;
             }
         }
 
@@ -135,6 +157,29 @@ namespace DieHarder
             }
         }
 
+        public void AddVelocity(Vector3 velocity)
+        {
+            foreach (Rigidbody rb in transform.GetChild(0).GetComponentsInChildren<Rigidbody>())
+                rb.AddForce(velocity, ForceMode.VelocityChange);
+        }
+
+        public void Hit(StructureStorage killingStructure)
+        {
+            Rigidbody chestRB = transform.GetChild(0).GetChild(0).GetChild(3).GetComponent<Rigidbody>();
+            if (killingStructure.Velocity.magnitude > 0.01f)
+            {
+                Vector3 defaultVel = (killingStructure.Pos - chestRB.transform.position).normalized;
+                Vector3 actualVel = killingStructure.Velocity.magnitude < 0.5f ? defaultVel * killingStructure.Mass : killingStructure.Velocity * killingStructure.Mass;
+                chestRB.AddForceAtPosition(actualVel * 0.09f, killingStructure.Pos, ForceMode.Impulse);
+            }
+            else
+            {
+                Vector3 playerVel = ParentController.GetSubsystem<PlayerPhysics>().physicsRigidbody.velocity;
+                playerVel = new Vector3(playerVel.x, playerVel.y / 2f, playerVel.z);
+                chestRB.AddForce(playerVel * 10f, ForceMode.VelocityChange);
+            }
+        }
+
         private struct JointData
         {
             public Vector3 worldAnchor;
@@ -152,6 +197,43 @@ namespace DieHarder
                 Name = name;
                 VisualBone = visualsBone;
                 RagdollBone = ragdollBone;
+            }
+        }
+
+        public class RagdollPool
+        {
+            public PlayerController parentController;
+            private List<Ragdoll> poolItems => Transform.GetComponentsInChildren<Ragdoll>().ToList();
+            public Transform Transform;
+
+            public Ragdoll FetchRagdoll()
+            {
+                Ragdoll poolRagdoll;
+
+                if (Transform.childCount == 0)
+                {
+                    poolRagdoll = CreateRagdoll();
+                }
+                else
+                {
+                    List<Ragdoll> inactivePoolItems = poolItems.Where(pr => !pr.gameObject.activeSelf).ToList();
+                    if (inactivePoolItems.Count == 0) poolRagdoll = CreateRagdoll();
+                    else poolRagdoll = inactivePoolItems.First();
+                }
+                
+                poolRagdoll.gameObject.SetActive(true);
+                return poolRagdoll;
+            }
+
+            public Ragdoll CreateRagdoll()
+            {
+                GameObject newGo = GameObject.Instantiate(Core.Instance.ModObject_DDOLRagdoll);
+                newGo.name = HelperFunctions.SanitizeString(parentController.assignedPlayer.Data.GeneralData.PublicUsername + "Ragdoll");
+                newGo.transform.SetParent(ragdollPools[parentController].Transform);
+                Ragdoll newRagdoll = newGo.AddComponent<Ragdoll>();
+                newRagdoll.ParentController = parentController;
+                newRagdoll.SetupRagdoll();
+                return newRagdoll;
             }
         }
     }

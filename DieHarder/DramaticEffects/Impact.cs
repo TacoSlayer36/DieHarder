@@ -96,7 +96,7 @@ namespace DieHarder
 
             // Create background
             CreateSphereBackground();
-            
+
             // Play pre-impact sound
             CreateAudio();
             AudioManager.PlaySoundIfFileExists(Core.PreImpactAudioPath);
@@ -110,11 +110,15 @@ namespace DieHarder
             // Create shockwave
             Core.Instance.CreateShockwave(DamagePos, DamagedPlayer.ParentController);
 
+            // Create ragdoll
+            if (ModUISettings.DoSpawnRagdolls)
+                Ragdoll.SpawnRagdoll(DamagedPlayer.ParentController, InvolvedStructure);
+
             // Flash the screen again
             ScreenFlash.CreateScreenFlash(PlayerManager.Instance.LocalPlayer.Controller.GetCamera().transform, LayerMask.NameToLayer("PlayerController"));
 
             // End
-            CancelAnimation();
+            CancelAnimation(false);
         }
 
         void OnDestroy()
@@ -122,13 +126,22 @@ namespace DieHarder
             if (IsAnimationRunning) CancelAnimation();
         }
 
-        public void CancelAnimation()
+        public void CancelAnimation(bool strong = true)
         {
             IsAnimationRunning = false;
 
-            foreach (StructureKillStorage structureKillStorage in Core.Instance.StructureKillStorages)
-                structureKillStorage.Kill();
-            Core.Instance.StructureKillStorages.Clear();
+            if (strong)
+            {
+                foreach (StructureKillStorage structureKillStorage in Core.Instance.StructureKillStorages)
+                {
+                    structureKillStorage.Kill();
+                    Core.Instance.StructureKillStorages.Clear();
+                }
+            }
+            else
+            {
+                MelonCoroutines.Start(StructureKillStorage.C_KillStructuresFromShockwave());
+            }
 
             ClearPlayerSilhouettes();
             ClearStructureSilhouettes();
@@ -143,7 +156,7 @@ namespace DieHarder
             }
 
             GameObject.Destroy(SphereBackground);
-            GameObject.Destroy(AudioPlayer.gameObject);
+            GameObject.Destroy(AudioPlayer?.gameObject);
 
             RenderSettings.fog = fogEnabledStorage;
 
@@ -330,12 +343,13 @@ namespace DieHarder
         {
             if (Visuals == null) return;
 
-            List<Transform> parentBones = new();
-            foreach (var bone in ParentController.GetBones())
-                parentBones.Add(bone.Transform);
-            List<Transform> myBones = new();
-            foreach (var bone in Visuals.GetComponent<RigDefinition>().BoneDefinitions.ToList())
-                parentBones.Add(bone.Transform);
+            List<Transform> parentBones = ParentController.GetBones()
+                .Select(bone => bone.Transform)
+                .ToList();
+            List<Transform> myBones = Visuals.GetComponent<RigDefinition>().BoneDefinitions
+                .Select(bone => bone.Transform)
+                .ToList();
+
             if (Camera != null) Camera.transform.position = ParentController.GetCamera().transform.position;
 
             

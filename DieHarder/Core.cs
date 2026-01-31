@@ -1,5 +1,13 @@
 ﻿/* -- TODO --
  * NameToLayer li ike
+ * Players collide with ragdolls
+ * Howard compatibility
+ * Replay Mod compatibility
+ * Silhouette colors based on win/loss
+ * Hit/Hold/Flick/Explode VFX in silhouettes
+ * Heads are dangly
+ * Shiftstones on ragdolls
+ * Structures break from shockwave
 */
 
 using RumbleModdingAPI;
@@ -15,8 +23,6 @@ using UnityEngine.Events;
 using System.Linq;
 using System.Collections;
 using Il2CppRUMBLE.Managers;
-using Il2CppRUMBLE.Players.Scaling;
-using Il2CppRootMotion;
 
 [assembly: MelonInfo(typeof(DieHarder.Core), DieHarder.BuildInfo.Name, DieHarder.BuildInfo.Version, DieHarder.BuildInfo.Author)]
 [assembly: MelonGame("Buckethead Entertainment", "RUMBLE")]
@@ -129,14 +135,23 @@ namespace DieHarder
         {
             if (DebugEnabled)
             {
-                if (!Input.GetKey(KeyCode.LeftShift) && Input.GetKeyDown(KeyCode.Q))
+                if (!Input.GetKey(KeyCode.LeftShift) && Input.GetKeyDown(KeyCode.T))
                 {
                     OnPlayerHealthDepleted(PlayerManager.Instance.localPlayer.Controller.GetSubsystem<PlayerHealth>());
                 }
 
-                if (Input.GetKey(KeyCode.LeftShift) && Input.GetKeyDown(KeyCode.Q))
+                if (Input.GetKey(KeyCode.LeftShift) && Input.GetKeyDown(KeyCode.T))
                 {
-                    Ragdoll.CreateRagdoll(PlayerManager.Instance.localPlayer.Controller);
+                    Ragdoll raggy = Ragdoll.SpawnRagdoll(PlayerManager.Instance.localPlayer.Controller, FindClosestStructure(PlayerManager.Instance.LocalPlayer.Controller));
+                }
+
+                if (Input.GetKeyDown(KeyCode.Y))
+                {
+                    foreach (var s in StructureStorages)
+                    {
+                        MelonLogger.Msg($"{s} | {s.StructureGO.GetComponentInChildren<Rigidbody>().mass}");
+                        MelonLogger.Msg("Player: " + PlayerManager.Instance.LocalPlayer.Controller.GetSubsystem<PlayerPhysics>().physicsRigidbody.mass);
+                    }
                 }
             }
         }
@@ -214,23 +229,15 @@ namespace DieHarder
 
             PlayerController damagedPlayer = playerHealth.ParentController;
 
-            Impact newImpact = CreateImpact();
-
-            newImpact.InvolvedPlayers = GetInvolvedPlayers(damagedPlayer);
-            newImpact.DamagedPlayer = PlayerSilhouettes[damagedPlayer];
-
-            Vector3 playerPos = damagedPlayer.GetChest().position;
-            List<StructureStorage> structuresWithinRange = StructureStorages?.Where(obj => Vector3.Distance(obj.Pos, playerPos) <= 3f).ToList();
-            StructureStorage closestStructure = structuresWithinRange?.OrderBy(obj => Vector3.Distance(obj.Pos, playerPos))?.FirstOrDefault();
-            newImpact.InvolvedStructure = closestStructure;
-
-            if (ActiveImpact != null)
+            if (ModUISettings.DoDramaticEffects)
             {
-                ActiveImpact.CancelAnimation();
-                GameObject.Destroy(ActiveImpact);
+                ActiveImpact = CreateImpact(damagedPlayer);
             }
-            ActiveImpact = newImpact;
-            newImpact.RunAnimation();
+            else if (ModUISettings.DoSpawnRagdolls)
+            {
+                Ragdoll newRagdoll = Ragdoll.SpawnRagdoll(damagedPlayer);
+                newRagdoll.Hit(FindClosestStructure(damagedPlayer));
+            }
         }
 
         public List<PlayerVisualsClone> GetInvolvedPlayers(PlayerController damagedPlayer)
@@ -285,13 +292,36 @@ namespace DieHarder
             PlayerSilhouettes[player] = playerSilhouette;
         }
 
-        public Impact CreateImpact()
+        public Impact CreateImpact(PlayerController damagedPlayer)
         {
             GameObject newImpactGO = new GameObject("Impact");
             newImpactGO.transform.SetParent(ModObject_DramaticEffects.transform);
             Impact newImpact = newImpactGO.AddComponent<Impact>();
             Impacts.Add(newImpact);
+
+            newImpact.InvolvedPlayers = GetInvolvedPlayers(damagedPlayer);
+            newImpact.DamagedPlayer = PlayerSilhouettes[damagedPlayer];
+
+            StructureStorage closestStructure = FindClosestStructure(damagedPlayer);
+            newImpact.InvolvedStructure = closestStructure;
+
+            if (ActiveImpact != null)
+            {
+                ActiveImpact.CancelAnimation();
+                GameObject.Destroy(ActiveImpact);
+            }
+            ActiveImpact = newImpact;
+            newImpact.RunAnimation();
+
             return newImpact;
+        }
+
+        public StructureStorage FindClosestStructure(PlayerController damagedPlayer)
+        {
+            Vector3 playerPos = damagedPlayer.GetChest().position;
+            List<StructureStorage> structuresWithinRange = StructureStorages?.Where(obj => Vector3.Distance(obj.Pos, playerPos) <= 3f).ToList();
+            StructureStorage closestStructure = structuresWithinRange?.OrderBy(obj => Vector3.Distance(obj.Pos, playerPos))?.FirstOrDefault();
+            return closestStructure;
         }
     }
 }
