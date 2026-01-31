@@ -1,4 +1,8 @@
-﻿using RumbleModdingAPI;
+﻿/* -- TODO --
+ * NameToLayer li ike
+*/
+
+using RumbleModdingAPI;
 using RumbleModUI;
 
 using MelonLoader;
@@ -11,9 +15,8 @@ using UnityEngine.Events;
 using System.Linq;
 using System.Collections;
 using Il2CppRUMBLE.Managers;
-using Il2CppPhoton.Compression;
-using System.IO;
-using Il2CppRUMBLE.Networking.MatchFlow;
+using Il2CppRUMBLE.Players.Scaling;
+using Il2CppRootMotion;
 
 [assembly: MelonInfo(typeof(DieHarder.Core), DieHarder.BuildInfo.Name, DieHarder.BuildInfo.Version, DieHarder.BuildInfo.Author)]
 [assembly: MelonGame("Buckethead Entertainment", "RUMBLE")]
@@ -37,13 +40,20 @@ namespace DieHarder
         public GameObject ModObject_Parent;
         public GameObject ModObject_Silhouettes;
         public GameObject ModObject_DramaticEffects;
+        public GameObject ModObject_Ragdolls;
+        public GameObject ModObject_DDOLParent;
+        public GameObject ModObject_DDOLRagdoll => ModObject_DDOLParent.transform.GetChild(0).gameObject;
+        private MelonPreferences_Category prefs_Category;
+        private MelonPreferences_Entry<bool> prefs_DebugEnabled;
+        public bool DebugEnabled => prefs_DebugEnabled.Value;
+
         public string CurrentScene => Calls.Scene.GetSceneName();
-        public bool IsInMatch => CurrentScene.Contains("Map") && PlayerManager.Instance.AllPlayers.Count > 1;
+        public bool IsInMatch => CurrentScene.Contains("Map") && PlayerManager.Instance.AllPlayers.Count >= 2;
 
         public List<Pool<PooledMonoBehaviour>> StructurePools = new();
         public List<StructureStorage> StructureStorages = new();
         public List<StructureKillStorage> StructureKillStorages = new();
-        public bool MatchJustEnded = false;
+        public bool HasMatchEnded = false;
 
         public Impact ActiveImpact;
         public Shockwave ActiveShockwave;
@@ -95,7 +105,8 @@ namespace DieHarder
         public const string ImpactAudioPath = "UserData/" + BuildInfo.Name + "/impact.mp3";
         public const string PreImpactAudioPath = "UserData/" + BuildInfo.Name + "/pre-impact.mp3";
 
-        public Dictionary<PlayerController, PlayerSilhouette> PlayerSilhouettes = new();
+        public Dictionary<PlayerController, PlayerVisualsClone> PlayerSilhouettes = new();
+        public Dictionary<PlayerController, Ragdoll> PlayerRagdolls = new();
         public List<Impact> Impacts = new();
 
         private List<PlayerController> playersProcessedThisFrame = new();
@@ -105,6 +116,9 @@ namespace DieHarder
             Instance = this;
             UI.instance.UI_Initialized += OnUIInit;
 
+            prefs_Category = MelonPreferences.CreateCategory("DieHarder");
+            prefs_DebugEnabled = prefs_Category.CreateEntry<bool>("DebugModeEnabled", true);
+
             SilhouetteShader = Calls.LoadAssetFromStream<Shader>(this, "DieHarder.assets.dieharder", "SolidColorUnlit");
             SilhouetteShader.hideFlags = HideFlags.HideAndDontSave & HideFlags.DontUnloadUnusedAsset;
             ShockwaveShader = Calls.LoadAssetFromStream<Shader>(this, "DieHarder.assets.dieharder", "Shockwave");
@@ -113,13 +127,24 @@ namespace DieHarder
 
         public override void OnUpdate()
         {
-            //if (MelonPreferences.GetCategory("Debugging"))
+            if (DebugEnabled)
             {
-                if (Input.GetKeyDown(KeyCode.Q))
+                if (!Input.GetKey(KeyCode.LeftShift) && Input.GetKeyDown(KeyCode.Q))
                 {
                     OnPlayerHealthDepleted(PlayerManager.Instance.localPlayer.Controller.GetSubsystem<PlayerHealth>());
                 }
+
+                if (Input.GetKey(KeyCode.LeftShift) && Input.GetKeyDown(KeyCode.Q))
+                {
+                    Ragdoll.CreateRagdoll(PlayerManager.Instance.localPlayer.Controller);
+                }
             }
+        }
+
+        public void GetThisGuysLayerMaskLol(GameObject go)
+        {
+            MelonLogger.Msg($"Include: {(int)go.GetComponent<Rigidbody>().includeLayers}");
+            MelonLogger.Msg($"Exclude: {(int)go.GetComponent<Rigidbody>().excludeLayers}");
         }
 
         public override void OnFixedUpdate()
@@ -139,12 +164,26 @@ namespace DieHarder
             ModObject_Silhouettes.transform.SetParent(ModObject_Parent.transform);
             ModObject_DramaticEffects = new GameObject("DramaticEffects");
             ModObject_DramaticEffects.transform.SetParent(ModObject_Parent.transform);
+            ModObject_Ragdolls = new GameObject("Ragdolls");
+            ModObject_Ragdolls.transform.SetParent(ModObject_Parent.transform);
+
+            HasMatchEnded = false;
 
             if (Calls.Scene.GetSceneName() == "Gym" && !GlobalInit)
             {
-                fetchStructurePools();
-                GlobalInit = true;
+                RunGlobalInit();
             }
+        }
+
+        public void RunGlobalInit()
+        {
+            fetchStructurePools();
+
+            ModObject_DDOLParent = GameObject.Instantiate(Calls.LoadAssetFromStream<GameObject>(this, "DieHarder.assets.dieharder", "DieHarderDDOL"));
+            ModObject_DDOLParent.name = "DieHarderDDOL";
+            GameObject.DontDestroyOnLoad(ModObject_DDOLParent);
+
+            GlobalInit = true;
         }
 
         private void fetchStructurePools()
@@ -170,28 +209,17 @@ namespace DieHarder
 
         public void OnPlayerHealthDepleted(PlayerHealth playerHealth)
         {
-            if (IsInMatch && MatchJustEnded) return;   
+            if (IsInMatch && HasMatchEnded) return;
+            HasMatchEnded = true;
 
-            PlayerController parentController = playerHealth.ParentController;
+            PlayerController damagedPlayer = playerHealth.ParentController;
 
             Impact newImpact = CreateImpact();
 
-            List<PlayerSilhouette> involvedPlayers = new();
-            if (CurrentScene.Contains("Map"))
-            {
-                foreach (var player in PlayerManager.Instance.AllPlayers)
-                    involvedPlayers.Add(PlayerSilhouettes[player.Controller]);
-            }
-            else
-            {
-                involvedPlayers.Add(PlayerSilhouettes[parentController]);
-                if (parentController.controllerType != Il2CppRUMBLE.Players.ControllerType.Local)
-                    involvedPlayers.Add(PlayerSilhouettes[PlayerManager.instance.localPlayer.Controller]);
-            }
-            newImpact.InvolvedPlayers = involvedPlayers;
-            newImpact.DamagedPlayer = PlayerSilhouettes[parentController];
+            newImpact.InvolvedPlayers = GetInvolvedPlayers(damagedPlayer);
+            newImpact.DamagedPlayer = PlayerSilhouettes[damagedPlayer];
 
-            Vector3 playerPos = parentController.GetChest().position;
+            Vector3 playerPos = damagedPlayer.GetChest().position;
             List<StructureStorage> structuresWithinRange = StructureStorages?.Where(obj => Vector3.Distance(obj.Pos, playerPos) <= 3f).ToList();
             StructureStorage closestStructure = structuresWithinRange?.OrderBy(obj => Vector3.Distance(obj.Pos, playerPos))?.FirstOrDefault();
             newImpact.InvolvedStructure = closestStructure;
@@ -205,12 +233,30 @@ namespace DieHarder
             newImpact.RunAnimation();
         }
 
-        public void CreateShockwave(Vector3 pos)
+        public List<PlayerVisualsClone> GetInvolvedPlayers(PlayerController damagedPlayer)
+        {
+            List<PlayerVisualsClone> involvedPlayers = new();
+            if (IsInMatch)
+            {
+                involvedPlayers.Add(PlayerSilhouettes[PlayerManager.Instance.AllPlayers[0].Controller]);
+                involvedPlayers.Add(PlayerSilhouettes[PlayerManager.Instance.AllPlayers[1].Controller]);
+            }
+            else
+            {
+                involvedPlayers.Add(PlayerSilhouettes[damagedPlayer]);
+                if (damagedPlayer.controllerType != Il2CppRUMBLE.Players.ControllerType.Local)
+                    involvedPlayers.Add(PlayerSilhouettes[PlayerManager.instance.localPlayer.Controller]);
+            }
+            return involvedPlayers;
+        }
+
+        public void CreateShockwave(Vector3 pos, PlayerController damagedPlayer)
         {
             GameObject shockwaveGO = new GameObject("Shockwave");
             shockwaveGO.transform.SetParent(ModObject_DramaticEffects.transform);
             shockwaveGO.transform.position = pos;
             ActiveShockwave = shockwaveGO.AddComponent<Shockwave>();
+            ActiveShockwave.DamagedPlayer = damagedPlayer;
         }
 
         public void CreateSilhouetteFromPlayer(PlayerController player, float waitTime = 0f)
@@ -222,14 +268,14 @@ namespace DieHarder
         {
             yield return new WaitForSeconds(waitTime);
 
-            if (PlayerSilhouettes.TryGetValue(player, out PlayerSilhouette ps))
+            if (PlayerSilhouettes.TryGetValue(player, out PlayerVisualsClone ps))
             {
                 ps.ReapplyVisuals();
                 yield break;
             }
 
             GameObject newClone = GameObject.Instantiate(player.GetSubsystem<PlayerVisuals>().gameObject);
-            PlayerSilhouette playerSilhouette = newClone.AddComponent<PlayerSilhouette>();
+            PlayerVisualsClone playerSilhouette = newClone.AddComponent<PlayerVisualsClone>();
             playerSilhouette.ParentController = player;
             playerSilhouette.Setup();
             newClone.SetActive(false);

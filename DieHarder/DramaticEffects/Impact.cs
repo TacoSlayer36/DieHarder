@@ -1,30 +1,28 @@
-﻿using Il2CppPhoton.Pun;
+﻿using DieHarder.DramaticEffects;
 using Il2CppRUMBLE.Managers;
 using Il2CppRUMBLE.Players;
 using Il2CppRUMBLE.Players.Scaling;
+using Il2CppRUMBLE.Players.Subsystems;
 using Il2CppRUMBLE.Utilities;
 using MelonLoader;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
-using UnityEngine.Audio;
-using UnityEngine.Networking;
-using UnityEngine.Playables;
-using UnityEngine.Rendering;
+using UnityEngine.VFX;
 
 namespace DieHarder
 {
     [RegisterTypeInIl2Cpp]
     public class Impact : MonoBehaviour
     {
-        public List<PlayerSilhouette> InvolvedPlayers = new();
+        public List<PlayerVisualsClone> InvolvedPlayers = new();
         public StructureStorage InvolvedStructure;
         public List<GameObject> StructureSilhouettes = new();
         public GameObject SphereBackground;
         public AudioSource AudioPlayer;
 
-        public PlayerSilhouette DamagedPlayer;
+        public PlayerVisualsClone DamagedPlayer;
         public Vector3 DamagePos => InvolvedStructure != null ?
                                     (InvolvedStructure.Pos + DamagedPlayer.ParentController.GetChest().position) / 2 :
                                     DamagedPlayer.ParentController.GetChest().position;
@@ -47,7 +45,7 @@ namespace DieHarder
                         cameraInfo.ParentComponent.transform.rotation = cameraInfo.FreezeRot;
                 }
 
-                foreach (PlayerSilhouette playerSilhouette in Core.Instance.PlayerSilhouettes.Values)
+                foreach (PlayerVisualsClone playerSilhouette in Core.Instance.PlayerSilhouettes.Values)
                 {
                     if (playerSilhouette.Camera != null)
                         playerSilhouette.Camera.transform.rotation = PlayerManager.Instance.LocalPlayer.Controller.GetCamera().transform.rotation;
@@ -63,47 +61,59 @@ namespace DieHarder
 
         public IEnumerator C_RunAnimation()
         {
+            // Remove previously running animations on this Impact
             if (IsAnimationRunning) CancelAnimation();
-
             IsAnimationRunning = true;
 
+            // Store and modify all camera info
             Core.Instance.StoredCameraInfos = Core.GenerateCamInfos();
             foreach (CameraInfo cameraInfo in Core.Instance.StoredCameraInfos)
             {
                 Camera parentComponent = cameraInfo.ParentComponent;
                 parentComponent.cullingMask = 1 << Core.Instance.VisualLayer;
-                if (parentComponent.IsFirstPerson()) parentComponent.nearClipPlane = 0.08f;
+
+                if (cameraInfo.IsRecordingCam) parentComponent.nearClipPlane = 0.05f;
 
                 if (cameraInfo.IsRecordingCam) cameraInfo.ParentComponent.GetComponent<RecordingCamera>().enabled = false;
             }
 
+            // Disable fog
             fogEnabledStorage = RenderSettings.fog;
             RenderSettings.fog = false;
 
+            // Move each silhouette into place (and turn on their camera)
             PlayerManager.Instance.localPlayer.Controller.GetCamera().enabled = false;
-
-            foreach (PlayerSilhouette playerSilhouette in InvolvedPlayers)
+            foreach (PlayerVisualsClone playerSilhouette in InvolvedPlayers)
             {
                 playerSilhouette.CopyPose();
-                playerSilhouette.gameObject.SetActive(true);
+                playerSilhouette.Visuals.SetActive(true);
                 if (playerSilhouette.Camera != null) playerSilhouette.Camera.enabled = true;
             }
 
+            // Create structure silhouette
             if (ModUISettings.IncludeStructureSilhouette && InvolvedStructure != null)
                 CreateStructureSilhouette(InvolvedStructure);
 
+            // Create background
             CreateSphereBackground();
             
+            // Play pre-impact sound
             CreateAudio();
             AudioManager.PlaySoundIfFileExists(Core.PreImpactAudioPath);
 
-            yield return new WaitForSeconds(ModUISettings.FreezeFrameDuration / 1000f); // ---- FREEZE ----
+            // ---- FREEZE ----
+            yield return new WaitForSeconds(ModUISettings.FreezeFrameDuration / 1000f);
 
+            // Play impact sound
             AudioManager.PlaySoundIfFileExists(Core.ImpactAudioPath);
 
+            // Create shockwave
+            Core.Instance.CreateShockwave(DamagePos, DamagedPlayer.ParentController);
 
-            Core.Instance.CreateShockwave(DamagePos);
+            // Flash the screen again
+            ScreenFlash.CreateScreenFlash(PlayerManager.Instance.LocalPlayer.Controller.GetCamera().transform, LayerMask.NameToLayer("PlayerController"));
 
+            // End
             CancelAnimation();
         }
 
@@ -155,6 +165,35 @@ namespace DieHarder
             Quaternion rot = meshObject.transform.rotation;
             GameObject newStructureSilhouette = GameObject.Instantiate(meshObject);
 
+            /*
+            List<VisualEffect> visualEffects = structureInfo.StructureGO.GetComponentsInChildren<VisualEffect>().ToList();
+            foreach (VisualEffect effect in visualEffects)
+            {
+                if (effect.gameObject == structureInfo.StructureGO) continue;
+
+                Vector3 vfxPos = effect.transform.position;
+                Quaternion vfxRot = effect.transform.rotation;
+
+                // Must use the existing VFX instead of the new ones because VFX's will reset on instantiation
+                GameObject oldGo = effect.gameObject;
+                GameObject newGo = GameObject.Instantiate(effect.gameObject);
+
+                oldGo.transform.SetParent(newStructureSilhouette.transform);
+                oldGo.layer = Core.Instance.VisualLayer;
+                oldGo.GetComponent<VFXRenderer>().material = Core.Instance.PrimarySilhouetteMat;
+                VisualEffect oldVFX = oldGo.GetComponent<VisualEffect>();
+                oldVFX.pause = true;
+
+                // Replace the old VFX with the clone (for going back into the pool)
+                newGo.transform.SetParent(structureInfo.StructureGO.transform);
+
+                oldGo.transform.position = vfxPos;
+                oldGo.transform.rotation = vfxRot;
+                newGo.transform.position = vfxPos;
+                newGo.transform.rotation = vfxRot;
+            }
+            */
+
             Vector3 pos = structureInfo.StructureGO.transform.position;
             newStructureSilhouette.transform.SetParent(Core.Instance.ModObject_Silhouettes.transform);
             newStructureSilhouette.transform.position = pos;
@@ -177,11 +216,11 @@ namespace DieHarder
         }
         public void ClearPlayerSilhouettes()
         {
-            foreach (PlayerSilhouette playerSilhouette in InvolvedPlayers)
+            foreach (PlayerVisualsClone playerSilhouette in InvolvedPlayers)
             {
                 if (playerSilhouette.Camera != null)
                     playerSilhouette.Camera.enabled = false;
-                playerSilhouette.gameObject.SetActive(false);
+                playerSilhouette.Visuals.SetActive(false);
             }
         }
 
@@ -210,25 +249,41 @@ namespace DieHarder
     }
 
     [RegisterTypeInIl2Cpp]
-    public class PlayerSilhouette : MonoBehaviour
+    public class PlayerVisualsClone : MonoBehaviour
     {
         public PlayerController ParentController;
         public GameObject Visuals;
         public Transform LIV;
         public Camera Camera = null;
 
+        public VisualsType Type = VisualsType.Silhouette;
+        public enum VisualsType
+        {
+            Silhouette,
+            Ragdoll
+        }
+
         void Update()
         {
+            if (Visuals == null) return;
+
             if (ParentController == null)
             {
-                Core.Instance.PlayerSilhouettes.Remove(ParentController);
-                GameObject.DestroyImmediate(gameObject);
+                if (Type == VisualsType.Silhouette)
+                    Core.Instance.PlayerSilhouettes.Remove(ParentController);
+                else if (Type == VisualsType.Ragdoll)
+                    Core.Instance.PlayerRagdolls.Remove(ParentController);
+
+                GameObject.DestroyImmediate(Visuals);
             }
         }
 
-        public void Setup()
+        public void Setup(GameObject setupObject = null)
         {
-            foreach (var m in gameObject.GetComponentsInChildren<Renderer>())
+            if (setupObject == null) setupObject = gameObject;
+            Visuals = setupObject;
+
+            foreach (var m in Visuals.GetComponentsInChildren<Renderer>())
             {
                 if (m.name == "FadeScreenRenderer")
                 {
@@ -236,51 +291,74 @@ namespace DieHarder
                 }
                 else
                 {
-                    m.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-                    m.sharedMaterial = Core.Instance.PrimarySilhouetteMat;
-                    if (ParentController.ControllerType == Il2CppRUMBLE.Players.ControllerType.Local) m.material.SetFloat("_IsLocal", 1);
-                    m.gameObject.layer = Core.Instance.VisualLayer;
+                    if (Type == VisualsType.Silhouette)
+                    {
+                        m.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+                        m.sharedMaterial = Core.Instance.PrimarySilhouetteMat;
+                        m.gameObject.layer = Core.Instance.VisualLayer;
+                        if (ParentController.ControllerType == Il2CppRUMBLE.Players.ControllerType.Local) m.material.SetFloat("_IsLocal", 1);
+                    }
                 }
             }
 
-            HelperFunctions.DisableAllComponents(gameObject, new List<Behaviour>{ this, GetComponent<RigDefinition>() });
-            if (ParentController.controllerType == Il2CppRUMBLE.Players.ControllerType.Local)
+            foreach (var c in Visuals.GetComponentsInChildren<Collider>())
+            {
+                c.enabled = false;
+            }
+
+            if (Type == VisualsType.Ragdoll)
+            {
+                Visuals.GetComponentInChildren<SkinnedMeshRenderer>().material = ParentController.GetSubsystem<PlayerVisuals>().NonHeadClippedMaterial;
+            }
+
+            HelperFunctions.DisableAllComponents(Visuals, new List<Behaviour>{ this, Visuals.GetComponent<RigDefinition>() });
+            if (Type == VisualsType.Silhouette && ParentController.controllerType == Il2CppRUMBLE.Players.ControllerType.Local)
             {
                 GameObject newCam = new GameObject("Camera");
-                newCam.transform.SetParent(transform);
+                newCam.transform.SetParent(Visuals.transform);
                 Camera = newCam.AddComponent<Camera>();
+                Camera.CopyFrom(PlayerManager.Instance.LocalPlayer.Controller.GetCamera());
+                Camera.nearClipPlane = 0.01f;
                 Camera.depth = -10;
                 Camera.enabled = false;
                 Camera.cullingMask = 1 << Core.Instance.VisualLayer;
             }
-            GameObject.Destroy(transform.GetChild(2)?.gameObject);
+            GameObject.Destroy(Visuals.transform.GetChild(2)?.gameObject);
         }
 
         public void CopyPose()
         {
-            List<BoneDefinition> parentBones = ParentController.GetBones();
-            List<BoneDefinition> myBones = GetComponent<RigDefinition>().BoneDefinitions.ToList();
+            if (Visuals == null) return;
+
+            List<Transform> parentBones = new();
+            foreach (var bone in ParentController.GetBones())
+                parentBones.Add(bone.Transform);
+            List<Transform> myBones = new();
+            foreach (var bone in Visuals.GetComponent<RigDefinition>().BoneDefinitions.ToList())
+                parentBones.Add(bone.Transform);
             if (Camera != null) Camera.transform.position = ParentController.GetCamera().transform.position;
 
-            for (int i = 0; i < parentBones.Count; i++)
-            {
-                myBones[i].Transform.position = parentBones[i].Transform.position;
-                myBones[i].Transform.rotation = parentBones[i].Transform.rotation;
-                myBones[i].Transform.localScale = parentBones[i].Transform.localScale;
-            }
+            
+            HelperFunctions.CopyAllTransforms(parentBones, myBones);
         }
 
         public void ReapplyVisuals()
         {
-            SkinnedMeshRenderer myRenderer = GetComponentInChildren<SkinnedMeshRenderer>();
+            if (Visuals == null) return;
+
+            SkinnedMeshRenderer myRenderer = Visuals.GetComponentInChildren<SkinnedMeshRenderer>();
             SkinnedMeshRenderer parentRenderer = ParentController.transform.GetChild(1).GetComponentInChildren<SkinnedMeshRenderer>();
             myRenderer.sharedMesh = parentRenderer.sharedMesh;
         }
 
         public void Remove()
         {
-            Core.Instance.PlayerSilhouettes.Remove(ParentController);
-            GameObject.DestroyImmediate(gameObject);
+            if (Type == VisualsType.Silhouette)
+                Core.Instance.PlayerSilhouettes.Remove(ParentController);
+            else if (Type == VisualsType.Ragdoll)
+                Core.Instance.PlayerRagdolls.Remove(ParentController);
+
+            GameObject.DestroyImmediate(Visuals);
         }
     }
 }

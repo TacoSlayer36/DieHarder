@@ -1,5 +1,9 @@
-﻿using Il2CppRUMBLE.MoveSystem;
+﻿using Il2CppRootMotion;
+using Il2CppRUMBLE.MoveSystem;
+using Il2CppSystem;
+using MelonLoader;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text.RegularExpressions;
 using UnityEngine;
 
@@ -11,6 +15,8 @@ namespace DieHarder
         public Vector3 Pos;
         public Quaternion Rot;
         public Vector3 Velocity;
+
+        public static List<GameObject> ProcessedStructuresForPhysics = new();
 
         public enum StructureType
         {
@@ -63,19 +69,92 @@ namespace DieHarder
                     string structureTypeString = match.Groups[1].Value;
                     StructureStorage.StructureType structureType = StructureStorage.ParseType(structureTypeString);
 
+                    Rigidbody rb = go.GetComponent<Rigidbody>();
+                    Vector3 vel = rb?.velocity == null ? Vector3.zero : rb.velocity;
+
                     StructureStorage newStorage = new StructureStorage
                     {
                         StructureGO = go,
                         Pos = go.transform.position,
                         Rot = go.transform.rotation,
-                        Velocity = go.GetComponent<Rigidbody>().velocity,
+                        Velocity = vel,
                         Type = structureType,
                     };
                     structures.Add(newStorage);
+
+                    if (!ProcessedStructuresForPhysics.Contains(go))
+                        ProcessStructureForPhysics(newStorage);
                 }
             }
 
             return structures;
+        }
+
+        public static void ProcessStructureForPhysics(StructureStorage structureStorage)
+        {
+            GameObject structureGo = structureStorage.StructureGO;
+            Transform t = structureGo.transform;
+            ProcessedStructuresForPhysics.Add(structureGo);
+
+            StructureStorage.StructureType structureType = structureStorage.Type;
+            GameObject newCollider = new GameObject("RagdollCollider");
+
+            structureGo.GetComponentInChildren<Rigidbody>().excludeLayers = Core.Instance.PhysicsLayerMask;
+
+            if (structureType is StructureType.Disc or StructureType.Ball)
+            {
+                MeshCollider meshCollider = t.GetChild(0).GetComponent<MeshCollider>();
+                newCollider.AddComponent<MeshCollider>().sharedMesh = meshCollider.sharedMesh;
+            }
+
+            if (structureType is StructureType.Pillar or StructureType.RockCube or StructureType.Wall)
+            {
+                BoxCollider boxCollider = t.GetChild(0).GetComponent<BoxCollider>();
+                newCollider.AddComponent<BoxCollider>().size = boxCollider.size;
+            }
+
+            if (structureType is StructureType.SmallRock or StructureType.LargeRock or StructureType.BoulderBall)
+            {
+                MeshCollider meshCollider = t.GetComponent<MeshCollider>();
+                newCollider.AddComponent<MeshCollider>().sharedMesh = meshCollider.sharedMesh;
+            }
+
+            newCollider.layer = Core.Instance.PhysicsLayer;
+            newCollider.transform.SetParent(t, false);
+            Rigidbody rb = newCollider.AddComponent<Rigidbody>();
+            rb.isKinematic = true;
+            rb.includeLayers = Core.Instance.PhysicsLayerMask;
+        }
+    }
+
+    [RegisterTypeInIl2Cpp]
+    public class SubmissiveCollider : MonoBehaviour
+    {
+        Rigidbody self;
+
+        void Start()
+        {
+            self = GetComponent<Rigidbody>();
+        }
+
+        void OnCollisionEnter(Collision collision)
+        {
+            if (collision.gameObject.layer == LayerMask.NameToLayer("Move"))
+            {
+
+                Vector3 impulse = collision.impulse;
+                List<ContactPoint> contacts = new();
+                contacts = collision.contacts.ToList();
+
+                //impulse = impulse / contacts.Count; // number of contacts, length of the array
+
+                foreach (ContactPoint contact in contacts)
+                {
+                    self.AddForceAtPosition(contact.impulse, contact.point, ForceMode.Impulse);
+                    collision.rigidbody.AddForceAtPosition(contact.impulse, contact.point, ForceMode.Impulse);
+                    //contact.impulse = Vector3.zero;
+                }
+            }
         }
     }
 

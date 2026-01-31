@@ -1,4 +1,9 @@
 ﻿using Il2CppOculus.Platform;
+using Il2CppRUMBLE.Managers;
+using Il2CppRUMBLE.MoveSystem;
+using Il2CppRUMBLE.Players;
+using Il2CppRUMBLE.Players.Subsystems;
+using Il2CppRUMBLE.Pools;
 using MelonLoader;
 using System;
 using System.Collections.Generic;
@@ -12,21 +17,22 @@ namespace DieHarder
     [RegisterTypeInIl2Cpp]
     public class Shockwave : MonoBehaviour
     {
+        public PlayerController DamagedPlayer;
+
         public GameObject ForceField;
         public Renderer ForceFieldRenderer;
         private float forceFieldScale = 0f;
         private float forceFieldProximityDistance = 0.2f;
         private float forceFieldOpacity = 0.2f;
 
+        public static List<GameObject> Dusts = new();
+
         public float Timer = 0f;
 
         void Start()
         {
-            ForceField = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-            ForceField.transform.SetParent(transform, false);
-            ForceField.GetComponent<SphereCollider>().enabled = false;
-            ForceFieldRenderer = ForceField.GetComponent<Renderer>();
-            ForceFieldRenderer.material = new Material(Core.Instance.ShockwaveShader);
+            CreateForceField();
+            CreateDust();
         }
 
         void Update()
@@ -63,6 +69,28 @@ namespace DieHarder
             if (ForceField == null)
             {
                 GameObject.Destroy(gameObject);
+            }
+        }
+
+        public void CreateForceField()
+        {
+            ForceField = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            ForceField.transform.SetParent(transform, false);
+            ForceField.GetComponent<SphereCollider>().enabled = false;
+            ForceFieldRenderer = ForceField.GetComponent<Renderer>();
+            ForceFieldRenderer.material = new Material(Core.Instance.ShockwaveShader);
+        }
+
+        public void CreateDust()
+        {
+            if (DamagedPlayer.GetSubsystem<PlayerMovement>().WasGrounded)
+            {
+                Structure randomCube = PoolManager.Instance.resourcesToPool[55].Resource.GetComponent<Structure>();
+
+                PooledVisualEffect pooledVisualEffect = PoolManager.instance.availablePools[50].FetchFromPool(DamagedPlayer.GetStandingPosition(), Quaternion.identity).gameObject.GetComponent<PooledVisualEffect>();
+                pooledVisualEffect.SetStructureData(randomCube);
+                Dusts.Add(pooledVisualEffect.gameObject);
+                pooledVisualEffect.transform.localScale = Vector3.one * 1.7f;
             }
         }
     }

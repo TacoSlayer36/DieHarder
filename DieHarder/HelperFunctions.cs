@@ -33,6 +33,16 @@ namespace DieHarder
             }
         }
 
+        public static void CopyAllTransforms(List<Transform> from, List<Transform> to)
+        {
+            for (int i = 0; i < from.Count; i++)
+            {
+                to[i].position = from[i].position;
+                to[i].rotation = from[i].rotation;
+                to[i].localScale = from[i].localScale;
+            }
+        }
+
         public static string SanitizeString(string Input)
         {
             string pattern = @"<[^>]*>";

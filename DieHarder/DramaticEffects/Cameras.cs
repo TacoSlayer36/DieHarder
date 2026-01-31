@@ -18,7 +18,9 @@ namespace DieHarder
         public List<CameraInfo> StoredCameraInfos = new();
 
         public LayerMask VisualLayer = LayerMask.NameToLayer("Clouds");
-        //public LayerMask PhysicsLayer = LayerMask.NameToLayer("Clouds");
+        public LayerMask VisualLayerMask => 1 << VisualLayer;
+        public int PhysicsLayer = 3;
+        public LayerMask PhysicsLayerMask => 1 << PhysicsLayer;
 
         public static List<CameraInfo> GenerateCamInfos()
         {

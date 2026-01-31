@@ -7,7 +7,7 @@ namespace DieHarder
 {
 	public static class Debug
 	{
-		public static bool debugMode { get; set; } = true;
+		public static bool debugMode => Core.Instance.DebugEnabled;
 		public static void Log(string message, bool debugOnly = false, int logLevel = 0)
 		{
 
