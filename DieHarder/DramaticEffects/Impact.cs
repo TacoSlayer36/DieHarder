@@ -111,6 +111,14 @@ namespace DieHarder
             if (ModUISettings.DoSpawnRagdolls)
             {
                 Ragdoll newRagdoll = Ragdoll.SpawnRagdoll(DamagedPlayer.ParentController, InvolvedStructure);
+                newRagdoll.Hit(InvolvedStructure);
+                newRagdoll.UndoGhostOnClear = true;
+                newRagdoll.GhostifyOwner();
+                if (!Core.Instance.IsInMatch)
+                {
+                    newRagdoll.UndoGhostOnClear = true;
+                    newRagdoll.ClearAfter(5f);
+                }
             }
 
             // Flash the screen again
