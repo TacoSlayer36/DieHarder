@@ -14,7 +14,7 @@ namespace DieHarder
     [RegisterTypeInIl2Cpp]
     public class Ragdoll : PlayerVisualsClone
     {
-        private static Dictionary<PlayerController, RagdollPool> ragdollPools = new();
+        public static Dictionary<PlayerController, RagdollPool> RagdollPools = new();
         public static Material LocalHeadClippedMat = null;
 
         public List<BoneRef> BoneRefs = new();
@@ -39,19 +39,19 @@ namespace DieHarder
 
         public static RagdollPool FindOrCreateRagdollPool(PlayerController player)
         {
-            if (ragdollPools.ContainsKey(player)) return ragdollPools[player];
+            if (RagdollPools.ContainsKey(player)) return RagdollPools[player];
             
             string sanitizedName = HelperFunctions.SanitizeString(player.assignedPlayer.Data.GeneralData.PublicUsername + "RagdollPool");
             GameObject newGo = new GameObject(sanitizedName);
             newGo.transform.SetParent(Core.Instance.ModObject_Ragdolls.transform);
             RagdollPool newPool = new RagdollPool { parentController = player, Transform = newGo.transform };
-            ragdollPools[player] = newPool;
+            RagdollPools[player] = newPool;
             return newPool;
         }
 
         public static void ClearAllRagdolls()
         {
-            foreach (RagdollPool pool in ragdollPools.Values)
+            foreach (RagdollPool pool in RagdollPools.Values)
             {
                 foreach (Ragdoll ragdoll in pool.PoolItems)
                 {
@@ -299,7 +299,7 @@ namespace DieHarder
             {
                 GameObject newGo = GameObject.Instantiate(Core.Instance.ModObject_DDOLRagdoll);
                 newGo.name = HelperFunctions.SanitizeString(parentController.assignedPlayer.Data.GeneralData.PublicUsername + "Ragdoll");
-                newGo.transform.SetParent(ragdollPools[parentController].Transform);
+                newGo.transform.SetParent(RagdollPools[parentController].Transform);
                 Ragdoll newRagdoll = newGo.AddComponent<Ragdoll>();
                 newRagdoll.ParentController = parentController;
                 newRagdoll.SetupRagdoll();

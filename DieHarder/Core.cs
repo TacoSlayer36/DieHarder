@@ -198,6 +198,12 @@ namespace DieHarder
 
             HasMatchEnded = false;
 
+            Ragdoll.RagdollPools.Clear();
+            Ragdoll.LocalHeadClippedMat = null;
+            ActiveImpact = null;
+            ActiveShockwave = null;
+            PlayerRagdolls.Clear();
+
             if (Calls.Scene.GetSceneName() == "Gym" && !GlobalInit)
             {
                 RunGlobalInit();
