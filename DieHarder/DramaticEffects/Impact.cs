@@ -2,6 +2,7 @@
 using Il2CppRUMBLE.Managers;
 using Il2CppRUMBLE.Players;
 using Il2CppRUMBLE.Players.Scaling;
+using Il2CppRUMBLE.Players.Subsystems;
 using Il2CppRUMBLE.Utilities;
 using MelonLoader;
 using System.Collections;
@@ -29,6 +30,34 @@ namespace DieHarder
         public bool IsAnimationRunning = false;
 
         private bool fogEnabledStorage = false;
+
+        public static Color GetColorFromSetting(string colorString)
+        {
+            if (colorString.ToLower() == "match")
+            {
+                bool localHealthEmpty = false;
+                bool otherHealthEmpty = false;
+                localHealthEmpty = PlayerManager.Instance.LocalPlayer.Data.HealthPoints == 0;
+                foreach (Player player in PlayerManager.Instance.AllPlayers)
+                {
+                    if (player.Controller.controllerType != Il2CppRUMBLE.Players.ControllerType.Local && player.Data.HealthPoints == 0)
+                        otherHealthEmpty = true;
+                }
+
+                if (localHealthEmpty && !otherHealthEmpty) return Color.red;
+                else if (localHealthEmpty && otherHealthEmpty) return Color.yellow;
+                else return Color.green;
+            }
+            else
+            {
+                Color color;
+                if (ColorUtility.TryParseHtmlString(colorString, out color))
+                {
+                    return color;
+                }
+                else return Color.black;
+            }
+        }
 
         void Update()
         {
@@ -88,7 +117,7 @@ namespace DieHarder
             }
 
             // Create structure silhouette
-            if (ModUISettings.IncludeStructureSilhouette && InvolvedStructure != null)
+            if (ModUISettings.IncludeStructureInImpact && InvolvedStructure != null)
                 CreateStructureSilhouette(InvolvedStructure);
 
             // Create background
@@ -99,7 +128,7 @@ namespace DieHarder
             AudioManager.PlaySoundIfFileExists(Core.PreImpactAudioPath);
 
             // ---- FREEZE ----
-            yield return new WaitForSeconds(ModUISettings.FreezeFrameDuration / 1000f);
+            yield return new WaitForSeconds(ModUISettings.ImpactFrameDuration / 1000f);
 
             // Play impact sound
             AudioManager.PlaySoundIfFileExists(Core.ImpactAudioPath);
@@ -108,16 +137,26 @@ namespace DieHarder
             Core.Instance.CreateShockwave(DamagePos, DamagedPlayer.ParentController);
 
             // Create ragdoll
-            if (ModUISettings.DoSpawnRagdolls)
+            if (Core.Instance.IsInMatch)
             {
-                Ragdoll newRagdoll = Ragdoll.SpawnRagdoll(DamagedPlayer.ParentController, InvolvedStructure);
-                newRagdoll.Hit(InvolvedStructure);
-                newRagdoll.UndoGhostOnClear = true;
-                newRagdoll.GhostifyOwner();
-                if (!Core.Instance.IsInMatch)
+                if (ModUISettings.RagdollsInMatches > 1)
                 {
+                    Ragdoll newRagdoll = Ragdoll.SpawnRagdoll(DamagedPlayer.ParentController, InvolvedStructure);
+                    newRagdoll.Hit(InvolvedStructure);
                     newRagdoll.UndoGhostOnClear = true;
-                    newRagdoll.ClearAfter(5f);
+                    newRagdoll.GhostifyOwner();
+                    //newRagdoll.ClearAfter(ModUISettings.CleanupInMatches);
+                }
+            }
+            else
+            {
+                if (ModUISettings.RagdollsOutsideMatches > 1)
+                {
+                    Ragdoll newRagdoll = Ragdoll.SpawnRagdoll(DamagedPlayer.ParentController, InvolvedStructure);
+                    newRagdoll.Hit(InvolvedStructure);
+                    newRagdoll.UndoGhostOnClear = true;
+                    newRagdoll.GhostifyOwner();
+                    newRagdoll.ClearAfter(ModUISettings.CleanupOutsideMatches);
                 }
             }
 
@@ -153,23 +192,30 @@ namespace DieHarder
             ClearPlayerSilhouettes();
             ClearStructureSilhouettes();
 
-            PlayerManager.Instance.localPlayer.Controller.GetCamera().enabled = true;
+            if (PlayerManager.Instance.LocalPlayer?.Controller?.GetCamera() != null)
+                PlayerManager.Instance.localPlayer.Controller.GetCamera().enabled = true;
 
             foreach (CameraInfo cameraInfo in Core.Instance.StoredCameraInfos)
             {
-                cameraInfo.ParentComponent.cullingMask = cameraInfo.CullingMask;
-                cameraInfo.ParentComponent.nearClipPlane = cameraInfo.NearClipPlane;
-                if (cameraInfo.IsRecordingCam) cameraInfo.ParentComponent.GetComponent<RecordingCamera>().enabled = true;
+                if (cameraInfo != null && cameraInfo.ParentComponent != null)
+                {
+                    cameraInfo.ParentComponent.cullingMask = cameraInfo.CullingMask;
+                    cameraInfo.ParentComponent.nearClipPlane = cameraInfo.NearClipPlane;
+                    if (cameraInfo.IsRecordingCam) cameraInfo.ParentComponent.GetComponent<RecordingCamera>().enabled = true;
+                }
             }
 
-            GameObject.Destroy(SphereBackground);
-            GameObject.Destroy(AudioPlayer?.gameObject);
+            if (SphereBackground != null)
+                GameObject.Destroy(SphereBackground);
+            if (AudioPlayer != null && AudioPlayer.gameObject != null)
+                GameObject.Destroy(AudioPlayer?.gameObject);
 
             RenderSettings.fog = fogEnabledStorage;
 
             if (AnimationCoroutine != null) MelonCoroutines.Stop(AnimationCoroutine);
 
-            GameObject.Destroy(gameObject);
+            if (this != null && gameObject != null)
+                GameObject.Destroy(gameObject);
         }
 
         public void ClearStructureSilhouettes()
@@ -184,35 +230,6 @@ namespace DieHarder
             GameObject meshObject = structureInfo.StructureGO.GetComponentInChildren<MeshRenderer>().gameObject;
             Quaternion rot = meshObject.transform.rotation;
             GameObject newStructureSilhouette = GameObject.Instantiate(meshObject);
-
-            /*
-            List<VisualEffect> visualEffects = structureInfo.StructureGO.GetComponentsInChildren<VisualEffect>().ToList();
-            foreach (VisualEffect effect in visualEffects)
-            {
-                if (effect.gameObject == structureInfo.StructureGO) continue;
-
-                Vector3 vfxPos = effect.transform.position;
-                Quaternion vfxRot = effect.transform.rotation;
-
-                // Must use the existing VFX instead of the new ones because VFX's will reset on instantiation
-                GameObject oldGo = effect.gameObject;
-                GameObject newGo = GameObject.Instantiate(effect.gameObject);
-
-                oldGo.transform.SetParent(newStructureSilhouette.transform);
-                oldGo.layer = Core.Instance.VisualLayer;
-                oldGo.GetComponent<VFXRenderer>().material = Core.Instance.PrimarySilhouetteMat;
-                VisualEffect oldVFX = oldGo.GetComponent<VisualEffect>();
-                oldVFX.pause = true;
-
-                // Replace the old VFX with the clone (for going back into the pool)
-                newGo.transform.SetParent(structureInfo.StructureGO.transform);
-
-                oldGo.transform.position = vfxPos;
-                oldGo.transform.rotation = vfxRot;
-                newGo.transform.position = vfxPos;
-                newGo.transform.rotation = vfxRot;
-            }
-            */
 
             Vector3 pos = structureInfo.StructureGO.transform.position;
             newStructureSilhouette.transform.SetParent(Core.Instance.ModObject_Silhouettes.transform);
@@ -240,7 +257,15 @@ namespace DieHarder
             {
                 if (playerSilhouette.Camera != null)
                     playerSilhouette.Camera.enabled = false;
-                playerSilhouette.Visuals.SetActive(false);
+                if (playerSilhouette != null)
+                {
+                    if (playerSilhouette.Visuals != null)
+                        playerSilhouette.Visuals.SetActive(false);
+                }
+                else
+                {
+                    Core.Instance.PlayerSilhouettes.Remove(playerSilhouette.ParentController);
+                }
             }
         }
 
@@ -365,6 +390,7 @@ namespace DieHarder
             SkinnedMeshRenderer myRenderer = Visuals.GetComponentInChildren<SkinnedMeshRenderer>();
             SkinnedMeshRenderer parentRenderer = ParentController.transform.GetChild(1).GetComponentInChildren<SkinnedMeshRenderer>();
             myRenderer.sharedMesh = parentRenderer.sharedMesh;
+            myRenderer.material = ParentController.GetSubsystem<PlayerVisuals>().NonHeadClippedMaterial;
         }
 
         public void Remove()

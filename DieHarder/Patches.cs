@@ -14,6 +14,8 @@ using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
 using UnityEngine.Playables;
+using UnityEngine.VFX;
+using static MelonLoader.MelonLogger;
 
 namespace DieHarder
 {
@@ -22,13 +24,35 @@ namespace DieHarder
     {
         private static void Prefix(ref PlayerVisuals __instance)
         {
-            Core.Instance.ProcessNewPlayer(__instance.parentController);
+            if (Time.timeSinceLevelLoad < 5f)
+            {
+                MelonCoroutines.Start(C_Delay(5f - Time.timeSinceLevelLoad, __instance.parentController));
+            }
+            else
+            {
+                Core.Instance.ProcessNewPlayer(__instance.parentController);
+            }
         }
 
         private static void Postfix(ref PlayerVisuals __instance)
         {
             if (__instance.parentController.controllerType == Il2CppRUMBLE.Players.ControllerType.Local)
             Ragdoll.LocalHeadClippedMat = __instance.parentController.GetSubsystem<PlayerVisuals>().GetComponentInChildren<SkinnedMeshRenderer>().material;
+        }
+
+        static IEnumerator C_Delay(float waitTime, PlayerController player)
+        {
+            yield return new WaitForSeconds(waitTime);
+            Core.Instance.ProcessNewPlayer(player);
+        }
+    }
+
+    [HarmonyPatch(typeof(DressingRoom), nameof(DressingRoom.DelayedApplyData), new Type[] { typeof(Il2CppRUMBLE.MeshGeneration.PlayerCharacterBaker.GeneratedPlayerVisuals) })]
+    public static class dressingRoomPatch
+    {
+        private static void Postfix()
+        {
+            Ragdoll.ReapplyVisualsFor(PlayerManager.Instance.LocalPlayer.Controller);
         }
     }
 
@@ -60,6 +84,23 @@ namespace DieHarder
         }
     }
 
+    [HarmonyPatch(typeof(PlayerScaling), nameof(PlayerScaling.ScaleController), new Type[] { typeof(PlayerMeasurement) })]
+    public static class PlayerScaling_ScaleController_Patch
+    {
+        private static void Postfix(ref PlayerScaling __instance)
+        {
+            if (__instance?.parentController == null) return;
+
+            if (Ragdoll.RagdollPools.ContainsKey(__instance.parentController))
+            {
+                Ragdoll.RagdollPool pool = Ragdoll.RagdollPools[__instance.parentController];
+                GameObject poolObject = pool.Transform.gameObject;
+                poolObject.name += " (old calibration)";
+                Ragdoll.RagdollPools.Remove(__instance.parentController);
+            }
+        }
+    }
+
     [HarmonyPatch(typeof(Structure), nameof(Structure.Kill), new Type[] { typeof(Vector3), typeof(bool), typeof(bool), typeof(bool) })]
     public static class Structure_Kill_Patch
     {
@@ -86,6 +127,23 @@ namespace DieHarder
             {
                 __instance.gameObject.transform.localScale = Vector3.one;
                 Shockwave.Dusts.Remove(__instance.gameObject);
+            }
+        }
+    }
+
+    [HarmonyPatch(typeof(Pool<PooledMonoBehaviour>), nameof(Pool<PooledMonoBehaviour>.FetchFromPool), new Type[] { typeof(Vector3), typeof(Quaternion) })]
+    public static class PooledMonoBehaviour_OnFetchFromPool_Patch
+    {
+        private static void Postfix(ref PooledMonoBehaviour __result, ref Vector3 position)
+        {
+            if (__result.name == "ExplodeFinale_VFX")
+            {
+                if (StructureStorage.GameStates.Count >= 3)
+                {
+                    List<StructureStorage> gameState = StructureStorage.GameStates[StructureStorage.GameStates.Count - 2];
+                    StructureStorage explodedStructure = StructureStorage.FindStructureStorageAt(position, gameState);
+                    Ragdoll.Explode(explodedStructure);
+                }
             }
         }
     }

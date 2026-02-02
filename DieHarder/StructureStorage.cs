@@ -19,6 +19,7 @@ namespace DieHarder
         public float Mass;
 
         public static List<GameObject> ProcessedStructuresForPhysics = new();
+        public static List<List<StructureStorage>> GameStates = new();
 
         public enum StructureType
         {
@@ -48,6 +49,22 @@ namespace DieHarder
                 case "LargeRock": return StructureType.LargeRock;
                 default: return StructureType.Unknown;
             }
+        }
+
+        public static StructureStorage FindStructureStorageAt(Vector3 pos, List<StructureStorage> gameState)
+        {
+            StructureStorage closestStorage = null;
+            float minDist = 2f;
+            foreach (StructureStorage storage in gameState)
+            {
+                float dist = Vector3.Distance(storage.Pos, pos);
+                if (dist < minDist)
+                {
+                    closestStorage = storage;
+                    minDist = dist;
+                }
+            }
+            return closestStorage;
         }
 
         public override string ToString()
@@ -128,6 +145,7 @@ namespace DieHarder
             newCollider.transform.SetParent(t, false);
             Rigidbody rb = newCollider.AddComponent<Rigidbody>();
             rb.isKinematic = true;
+            rb.excludeLayers = ~Core.Instance.PhysicsLayerMask;
             rb.includeLayers = Core.Instance.PhysicsLayerMask;
         }
     }
@@ -175,8 +193,10 @@ namespace DieHarder
 
                     if (distFromShockwave < shockwaveSize)
                     {
-                        killStorage.killVelocity = (killStorage.__instance.transform.position - shockwave.transform.position).normalized * 5f;
-                        killStorage.Kill();
+                        float heightOffset = Core.Instance.CurrentScene == "Map0" ? -1f : -2f;
+                        Vector3 shockwavePosOnFloor = new Vector3(shockwave.transform.position.x, heightOffset, shockwave.transform.position.y);
+                        Vector3 shockwaveKillVel = (killStorage.__instance.transform.position - shockwave.transform.position).normalized * 20f;
+                        killStorage.__instance?.Kill(shockwaveKillVel, true, true, false);
                     }
                 }
 

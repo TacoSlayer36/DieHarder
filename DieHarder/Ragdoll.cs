@@ -7,7 +7,6 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
-using UnityEngine.UI;
 
 namespace DieHarder
 {
@@ -18,10 +17,12 @@ namespace DieHarder
         public static Material LocalHeadClippedMat = null;
 
         public List<BoneRef> BoneRefs = new();
-        private Dictionary<Joint, Transform> boneAnchorCache = new();
+        private Dictionary<Joint, Transform> boneAnchorPosStorage = new();
+        private Dictionary<Joint, Vector3> originalBoneAnchors = new();
         public float Age = 0f;
         public float ClearAfterSeconds = 0f;
         public bool UndoGhostOnClear = false;
+        public Transform Chest;
 
         public static Ragdoll SpawnRagdoll(PlayerController player, StructureStorage killingStructure = null)
         {
@@ -53,9 +54,49 @@ namespace DieHarder
         {
             foreach (RagdollPool pool in RagdollPools.Values)
             {
+                foreach (Ragdoll ragdoll in pool?.PoolItems)
+                {
+                    ragdoll?.SetActive(false);
+                }
+            }
+        }
+
+        public static void ReapplyVisualsFor(PlayerController player)
+        {
+            foreach (RagdollPool ragdollPool in RagdollPools.Values)
+            {
+                foreach (Ragdoll ragdoll in ragdollPool.PoolItems)
+                {
+                    if (ragdoll.ParentController == player)
+                        ragdoll.ReapplyVisuals();
+                }
+            }    
+        }
+
+        public static void Explode(StructureStorage source)
+        {
+            if (source == null) return;
+
+            int structureType = (int)source.Type;
+            float structureMult = 0f;
+            if (structureType >= 2 && structureType <= 4)
+                structureMult = 1f;
+            else if (structureType == 5 || structureType == 6)
+                structureMult = 2f;
+            else if (structureType == 7)
+                structureMult = 3f;
+            else if (structureType == 8)
+                structureMult = 5f;
+
+            foreach (RagdollPool pool in RagdollPools.Values)
+            {
                 foreach (Ragdoll ragdoll in pool.PoolItems)
                 {
-                    ragdoll.SetActive(false);
+                    float dist = Vector3.Distance(ragdoll.Chest.position, source.Pos);
+                    dist = Mathf.Clamp(dist, 0.2f, 2.5f);
+                    float proximityMult = 2.5f - dist;
+                    Vector3 explodeDir = (ragdoll.Chest.position - source.Pos).normalized;
+                    ragdoll.AddVelocity(explodeDir * proximityMult * structureMult * 100f);
                 }
             }
         }
@@ -68,6 +109,8 @@ namespace DieHarder
 
             Visuals.transform.SetParent(transform);
 
+            Chest = transform.GetChild(0).GetChild(0).GetChild(3);
+
             PlayerMeasurement parentMeasurement = ParentController.assignedPlayer.Data.PlayerMeasurement;
             float height = parentMeasurement.Length;
             float armSpam = parentMeasurement.ArmSpan;
@@ -78,7 +121,17 @@ namespace DieHarder
                 {
                     if (visualBone.Transform.name == ragdollBone.name)
                     {
+                        Joint joint = ragdollBone.GetComponent<Joint>();
+                        if (joint != null)
+                        {
+                            originalBoneAnchors[joint] = joint.connectedAnchor;
+                        }
+
                         BoneRefs.Add(new BoneRef(visualBone.Transform.name, visualBone.Transform, ragdollBone));
+                        visualBone.Transform.SetParent(ragdollBone.transform);
+                        visualBone.Transform.position = ragdollBone.position;
+                        visualBone.Transform.rotation = ragdollBone.rotation;
+                        visualBone.Transform.localScale = ragdollBone.localScale / 100f;
                         break;
                     }
                 }
@@ -114,25 +167,22 @@ namespace DieHarder
         {
             yield return new WaitForSeconds(waitTime);
 
-            foreach (Rigidbody rb in transform.GetChild(0).GetComponentsInChildren<Rigidbody>())
+            try
             {
-                rb.excludeLayers = rb.excludeLayers.RemoveFromMask(new string[] { "PlayerOnPlayerInteraction" });
-                rb.excludeLayers = rb.excludeLayers & ~Core.Instance.PhysicsLayerMask;
-                rb.includeLayers = rb.includeLayers.AddToMask(new string[] { "PlayerOnPlayerInteraction" });
-                rb.includeLayers = rb.includeLayers | Core.Instance.PhysicsLayerMask;
+                foreach (Rigidbody rb in transform.GetChild(0).GetComponentsInChildren<Rigidbody>())
+                {
+                    rb.excludeLayers = rb.excludeLayers.RemoveFromMask(new string[] { "PlayerOnPlayerInteraction" });
+                    rb.excludeLayers = rb.excludeLayers & ~Core.Instance.PhysicsLayerMask;
+                    rb.includeLayers = rb.includeLayers.AddToMask(new string[] { "PlayerOnPlayerInteraction" });
+                    rb.includeLayers = rb.includeLayers | Core.Instance.PhysicsLayerMask;
+                }
             }
+            catch { }
         }
 
         void Update()
         {
             Age += Time.deltaTime;
-
-            foreach (BoneRef boneRef in BoneRefs)
-            {
-                boneRef.VisualBone.position = boneRef.RagdollBone.position;
-                boneRef.VisualBone.rotation = boneRef.RagdollBone.rotation;
-                boneRef.VisualBone.localScale = boneRef.RagdollBone.localScale;
-            }
 
             if (ClearAfterSeconds > 0 && Age >= ClearAfterSeconds)
             {
@@ -142,6 +192,8 @@ namespace DieHarder
                 }
                 SetActive(false);
             }
+
+            if (transform.GetChild(0).GetChild(0).position.y < -20f) SetActive(false);
         }
 
         private void CacheOriginalJointData()
@@ -156,11 +208,10 @@ namespace DieHarder
                     joint.autoConfigureConnectedAnchor = false;
 
                     GameObject newGo = new GameObject();
-                    newGo.transform.localScale = Vector3.one * 0.03f;
                     newGo.transform.SetParent(joint.connectedBody.transform);
                     newGo.transform.position = joint.transform.position;
                     newGo.name = joint.name;
-                    boneAnchorCache[joint] = newGo.transform;
+                    boneAnchorPosStorage[joint] = newGo.transform;
                 }
             }
         }
@@ -177,21 +228,28 @@ namespace DieHarder
 
             HelperFunctions.CopyAllTransforms(parentBones, ragdollBones);
 
-            // Reset all joint anchors based on new scales
+            ResetAnchors();
+        }
+
+        public void ResetAnchors()
+        {
+            List<Transform> ragdollBones = new();
+            foreach (BoneRef boneRef in BoneRefs)
+                ragdollBones.Add(boneRef.RagdollBone);
+
             foreach (Transform ragdollBone in ragdollBones)
             {
                 Joint joint = ragdollBone.GetComponent<Joint>();
                 if (joint == null) continue;
 
-                Vector3 newAnchorPos = joint.transform.InverseTransformPoint(boneAnchorCache[joint].transform.position);
-                joint.connectedAnchor *= ragdollBone.lossyScale.x / 100f;
+                Vector3 newAnchorPos = joint.transform.InverseTransformPoint(boneAnchorPosStorage[joint].transform.position);
+                joint.connectedAnchor = originalBoneAnchors[joint] * (ragdollBone.lossyScale.x / 100f);
             }
         }
 
         public void AddVelocity(Vector3 velocity)
         {
-            foreach (Rigidbody rb in transform.GetChild(0).GetComponentsInChildren<Rigidbody>())
-                rb.AddForce(velocity, ForceMode.VelocityChange);
+            Chest.GetComponent<Rigidbody>().AddForce(velocity, ForceMode.VelocityChange);
         }
 
         public void Hit(StructureStorage killingStructure)
@@ -250,18 +308,12 @@ namespace DieHarder
             ClearAfterSeconds = Age + time;
         }
 
-        private struct JointData
-        {
-            public Vector3 worldAnchor;
-            public Vector3 worldConnectedAnchor;
-            public bool hasConnectedBody;
-        }
-
         public class BoneRef
         {
             public string Name;
             public Transform VisualBone;
             public Transform RagdollBone;
+
             public BoneRef(string name, Transform visualsBone, Transform ragdollBone)
             {
                 Name = name;
@@ -273,7 +325,15 @@ namespace DieHarder
         public class RagdollPool
         {
             public PlayerController parentController;
-            public List<Ragdoll> PoolItems => Transform.GetComponentsInChildren<Ragdoll>().ToList();
+            public List<Ragdoll> PoolItems
+            {
+                get
+                {
+                    List<Ragdoll> poolItems = Transform?.GetComponentsInChildren<Ragdoll>(true)?.ToList();
+                    if (poolItems == null) return new List<Ragdoll>();
+                    return poolItems;
+                }
+            }
             public Transform Transform;
 
             public Ragdoll FetchRagdoll()
@@ -292,6 +352,7 @@ namespace DieHarder
                 }
                 
                 poolRagdoll.gameObject.SetActive(true);
+                poolRagdoll.CopyPose();
                 return poolRagdoll;
             }
 

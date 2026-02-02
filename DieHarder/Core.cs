@@ -1,14 +1,13 @@
 ﻿/* -- TODO --
- * NameToLayer li ike
- * Players collide with ragdolls
+ * ModUI
+ * Pop up from gutter
+ * Silhouette colors based on win/loss
+ * OnDamageTaken
+ * 
  * Howard compatibility
  * Replay Mod compatibility
- * Silhouette colors based on win/loss
  * Hit/Hold/Flick/Explode VFX in silhouettes
- * Heads are dangly
  * Shiftstones on ragdolls
- * Structures break from shockwave
- * Dressing room breaks things
 */
 
 using RumbleModdingAPI;
@@ -24,6 +23,7 @@ using UnityEngine.Events;
 using System.Linq;
 using System.Collections;
 using Il2CppRUMBLE.Managers;
+using Il2CppRUMBLE.Interactions.InteractionBase;
 
 [assembly: MelonInfo(typeof(DieHarder.Core), DieHarder.BuildInfo.Name, DieHarder.BuildInfo.Version, DieHarder.BuildInfo.Author)]
 [assembly: MelonGame("Buckethead Entertainment", "RUMBLE")]
@@ -58,7 +58,6 @@ namespace DieHarder
         public bool IsInMatch => CurrentScene.Contains("Map") && PlayerManager.Instance.AllPlayers.Count >= 2;
 
         public List<Pool<PooledMonoBehaviour>> StructurePools = new();
-        public List<StructureStorage> StructureStorages = new();
         public List<StructureKillStorage> StructureKillStorages = new();
         public bool HasMatchEnded = false;
 
@@ -88,9 +87,9 @@ namespace DieHarder
                 if (_primarySilhouetteMat == null)
                 {
                     _primarySilhouetteMat = new Material(SilhouetteShader);
-                    _primarySilhouetteMat.color = Color.black;
                     _primarySilhouetteMat.hideFlags = HideFlags.HideAndDontSave & HideFlags.DontUnloadUnusedAsset;
                 }
+                _primarySilhouetteMat.color = Impact.GetColorFromSetting(ModUISettings.PrimaryEffectColor);
                 return _primarySilhouetteMat;
             }
         }
@@ -102,9 +101,9 @@ namespace DieHarder
                 if (_secondarySilhouetteMat == null)
                 {
                     _secondarySilhouetteMat = new Material(SilhouetteShader);
-                    _secondarySilhouetteMat.color = Color.white;
                     _secondarySilhouetteMat.hideFlags = HideFlags.HideAndDontSave & HideFlags.DontUnloadUnusedAsset;
                 }
+                _secondarySilhouetteMat.color = Impact.GetColorFromSetting(ModUISettings.SecondaryEffectColor);
                 return _secondarySilhouetteMat;
             }
         }
@@ -136,6 +135,7 @@ namespace DieHarder
         {
             Instance = this;
             UI.instance.UI_Initialized += OnUIInit;
+            Calls.onMapInitialized += sceneReady;
 
             prefs_Category = MelonPreferences.CreateCategory("DieHarder");
             prefs_DebugEnabled = prefs_Category.CreateEntry<bool>("DebugModeEnabled", true);
@@ -170,24 +170,20 @@ namespace DieHarder
             }
         }
 
-        public void GetThisGuysLayerMaskLol(GameObject go)
-        {
-            MelonLogger.Msg($"Include: {(int)go.GetComponent<Rigidbody>().includeLayers}");
-            MelonLogger.Msg($"Exclude: {(int)go.GetComponent<Rigidbody>().excludeLayers}");
-        }
-
         public override void OnFixedUpdate()
         {
             if (!GlobalInit) return;
 
-            StructureStorages.Clear();
-            StructureStorages = StructureStorage.GenerateStructureStorages();
+            StructureStorage.GameStates.Add(StructureStorage.GenerateStructureStorages());
+            if (StructureStorage.GameStates.Count > 3) StructureStorage.GameStates.Remove(StructureStorage.GameStates.First());
 
             playersProcessedThisFrame.Clear();
         }
 
         public override void OnSceneWasLoaded(int buildIndex, string sceneName)
         {
+            ActiveImpact?.CancelAnimation();
+
             ModObject_Parent = new GameObject("DieHarder");
             ModObject_Silhouettes = new GameObject("Silhouettes");
             ModObject_Silhouettes.transform.SetParent(ModObject_Parent.transform);
@@ -208,6 +204,34 @@ namespace DieHarder
             {
                 RunGlobalInit();
             }
+        }
+
+        void sceneReady()
+        {
+            if (CurrentScene == "Gym")
+            {
+                MelonCoroutines.Start(C_ListenForLandButton("FlatLand"));
+                MelonCoroutines.Start(C_ListenForLandButton("VoidLand"));
+            }
+        }
+
+        private IEnumerator C_ListenForLandButton(string landType)
+        {
+            yield return new WaitForSeconds(1);
+            GameObject.Find(landType)?.
+                GetComponentInChildren<InteractionButton>().
+                onPressed.
+                AddListener(new System.Action(() =>
+                {
+                    MelonCoroutines.Start(C_OnLandEntered());
+                }));
+            yield break;
+        }
+
+        private IEnumerator C_OnLandEntered()
+        {
+            yield return new WaitForSeconds(1.5f);
+            ModObject_Parent.SetActive(true);
         }
 
         public void RunGlobalInit()
@@ -249,20 +273,46 @@ namespace DieHarder
 
             PlayerController damagedPlayer = playerHealth.ParentController;
 
-            if (ModUISettings.DoDramaticEffects)
+            if (IsInMatch)
             {
-                ActiveImpact = CreateImpact(damagedPlayer);
-            }
-            else if (ModUISettings.DoSpawnRagdolls)
-            {
-                Ragdoll newRagdoll = Ragdoll.SpawnRagdoll(damagedPlayer);
-                newRagdoll.Hit(FindClosestStructure(damagedPlayer));
-                newRagdoll.UndoGhostOnClear = true;
-                newRagdoll.GhostifyOwner();
-                if (!IsInMatch)
+                if (ModUISettings.DramaticEffectsInMatches > 1)
                 {
-                    newRagdoll.UndoGhostOnClear = true;
-                    newRagdoll.ClearAfter(5f);
+                    ActiveImpact = CreateImpact(damagedPlayer);
+                }
+            }
+            else
+            {
+                if (ModUISettings.DramaticEffectsOutsideMatches == 1)
+                {
+                    ActiveImpact = CreateImpact(damagedPlayer);
+                }
+            }
+
+            if (ActiveImpact == null)
+            {
+                if (Core.Instance.IsInMatch)
+                {
+                    if (ModUISettings.RagdollsInMatches > 1)
+                    {
+                        StructureStorage closestStructure = FindClosestStructure(damagedPlayer);
+                        Ragdoll newRagdoll = Ragdoll.SpawnRagdoll(damagedPlayer, closestStructure);
+                        newRagdoll.Hit(closestStructure);
+                        newRagdoll.UndoGhostOnClear = true;
+                        newRagdoll.GhostifyOwner();
+                        //newRagdoll.ClearAfter(ModUISettings.CleanupInMatches);
+                    }
+                }
+                else
+                {
+                    if (ModUISettings.RagdollsOutsideMatches > 1)
+                    {
+                        StructureStorage closestStructure = FindClosestStructure(damagedPlayer);
+                        Ragdoll newRagdoll = Ragdoll.SpawnRagdoll(damagedPlayer, closestStructure);
+                        newRagdoll.Hit(closestStructure);
+                        newRagdoll.UndoGhostOnClear = true;
+                        newRagdoll.GhostifyOwner();
+                        newRagdoll.ClearAfter(ModUISettings.CleanupOutsideMatches);
+                    }
                 }
             }
         }
@@ -302,9 +352,11 @@ namespace DieHarder
         {
             yield return new WaitForSeconds(waitTime);
 
+            if (player == null) yield break;
+
             if (PlayerSilhouettes.TryGetValue(player, out PlayerVisualsClone ps))
             {
-                ps.ReapplyVisuals();
+                ps?.ReapplyVisuals();
                 yield break;
             }
 
@@ -321,6 +373,8 @@ namespace DieHarder
 
         public Impact CreateImpact(PlayerController damagedPlayer)
         {
+            if (damagedPlayer == null) return null;
+
             GameObject newImpactGO = new GameObject("Impact");
             newImpactGO.transform.SetParent(ModObject_DramaticEffects.transform);
             Impact newImpact = newImpactGO.AddComponent<Impact>();
@@ -346,7 +400,7 @@ namespace DieHarder
         public StructureStorage FindClosestStructure(PlayerController damagedPlayer)
         {
             Vector3 playerPos = damagedPlayer.GetChest().position;
-            List<StructureStorage> structuresWithinRange = StructureStorages?.Where(obj => Vector3.Distance(obj.Pos, playerPos) <= 3f).ToList();
+            List<StructureStorage> structuresWithinRange = StructureStorage.GameStates.Last()?.Where(obj => Vector3.Distance(obj.Pos, playerPos) <= 3f).ToList();
             StructureStorage closestStructure = structuresWithinRange?.OrderBy(obj => Vector3.Distance(obj.Pos, playerPos))?.FirstOrDefault();
             return closestStructure;
         }
