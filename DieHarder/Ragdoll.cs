@@ -30,9 +30,20 @@ namespace DieHarder
             RagdollPool ownerPool = FindOrCreateRagdollPool(player);
             newRagdoll = ownerPool.FetchRagdoll();
 
+            bool launchFromGutter = Core.Instance.CurrentScene == "Map0" && newRagdoll.Chest.position.y <= -3 && newRagdoll.Chest.position.y >= -8;
+
             if (killingStructure != null)
             {
                 newRagdoll.Hit(killingStructure);
+            }
+            else if (!launchFromGutter)
+            {
+                newRagdoll.AddVelocity(new Vector3(Random.RandomRange(-30, 30), 70, Random.RandomRange(-30, 30)));
+            }
+            else
+            {
+                Vector3 launchLateral = new Vector3(newRagdoll.Chest.position.x, 0f, newRagdoll.Chest.position.z).normalized * -25f;
+                newRagdoll.AddVelocity(launchLateral + Vector3.up * 100f);
             }
 
             return newRagdoll;
@@ -128,10 +139,6 @@ namespace DieHarder
                         }
 
                         BoneRefs.Add(new BoneRef(visualBone.Transform.name, visualBone.Transform, ragdollBone));
-                        visualBone.Transform.SetParent(ragdollBone.transform);
-                        visualBone.Transform.position = ragdollBone.position;
-                        visualBone.Transform.rotation = ragdollBone.rotation;
-                        visualBone.Transform.localScale = ragdollBone.localScale / 100f;
                         break;
                     }
                 }
@@ -157,7 +164,7 @@ namespace DieHarder
                 rb.ResetCenterOfMass();
             }
 
-            MelonCoroutines.Start(C_EnableCollideWithPlayers(0.5f));
+            MelonCoroutines.Start(C_EnableCollideWithPlayers(1.0f));
 
             CacheOriginalJointData();
             CopyPose();
@@ -167,22 +174,28 @@ namespace DieHarder
         {
             yield return new WaitForSeconds(waitTime);
 
-            try
+            if (this?.transform?.GetChild(0) != null)
             {
                 foreach (Rigidbody rb in transform.GetChild(0).GetComponentsInChildren<Rigidbody>())
                 {
+                    if (rb == null) continue;
                     rb.excludeLayers = rb.excludeLayers.RemoveFromMask(new string[] { "PlayerOnPlayerInteraction" });
                     rb.excludeLayers = rb.excludeLayers & ~Core.Instance.PhysicsLayerMask;
                     rb.includeLayers = rb.includeLayers.AddToMask(new string[] { "PlayerOnPlayerInteraction" });
                     rb.includeLayers = rb.includeLayers | Core.Instance.PhysicsLayerMask;
                 }
             }
-            catch { }
         }
 
         void Update()
         {
             Age += Time.deltaTime;
+
+            foreach (BoneRef boneRef in BoneRefs)
+            {
+                boneRef.VisualBone.transform.position = boneRef.RagdollBone.transform.position;
+                boneRef.VisualBone.transform.rotation = boneRef.RagdollBone.transform.rotation;
+            }
 
             if (ClearAfterSeconds > 0 && Age >= ClearAfterSeconds)
             {
@@ -226,9 +239,20 @@ namespace DieHarder
             foreach (BoneRef boneRef in BoneRefs)
                 ragdollBones.Add(boneRef.RagdollBone);
 
+            foreach (Rigidbody rb in transform.GetChild(0).GetComponentsInChildren<Rigidbody>())
+            {
+                if (rb == null) continue;
+                rb.velocity = Vector3.zero;
+                rb.excludeLayers = rb.excludeLayers.AddToMask(new string[] { "PlayerOnPlayerInteraction" });
+                rb.includeLayers = rb.includeLayers.RemoveFromMask(new string[] { "PlayerOnPlayerInteraction" });
+            }
+
+            MelonCoroutines.Start(C_EnableCollideWithPlayers(1f));
+
             HelperFunctions.CopyAllTransforms(parentBones, ragdollBones);
 
-            ResetAnchors();
+            if (!ModUISettings.LegacyRagdollJank)
+                ResetAnchors();
         }
 
         public void ResetAnchors()
@@ -274,8 +298,11 @@ namespace DieHarder
         public void SetActive(bool active)
         {
             if (UndoGhostOnClear)
-            {
                 UnGhostifyOwner();
+            foreach (Rigidbody rb in transform.GetChild(0).GetComponentsInChildren<Rigidbody>())
+            {
+                if (rb == null) continue;
+                rb.velocity = Vector3.zero;
             }
             gameObject.SetActive(active);
         }

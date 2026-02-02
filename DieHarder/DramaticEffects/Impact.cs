@@ -31,22 +31,23 @@ namespace DieHarder
 
         private bool fogEnabledStorage = false;
 
-        public static Color GetColorFromSetting(string colorString)
+        public static Color GetColorFromSetting(string colorString, bool isPrimary)
         {
-            if (colorString.ToLower() == "match")
+            if (colorString == "match")
             {
-                bool localHealthEmpty = false;
-                bool otherHealthEmpty = false;
-                localHealthEmpty = PlayerManager.Instance.LocalPlayer.Data.HealthPoints == 0;
-                foreach (Player player in PlayerManager.Instance.AllPlayers)
+                Core.MatchResult matchResult = Core.Instance.GetMatchResult();
+                Color color;
+
+                switch (matchResult)
                 {
-                    if (player.Controller.controllerType != Il2CppRUMBLE.Players.ControllerType.Local && player.Data.HealthPoints == 0)
-                        otherHealthEmpty = true;
+                    case Core.MatchResult.Won: color = Color.green; break;
+                    case Core.MatchResult.Lost: color = Color.red; break;
+                    default: color = Color.yellow; break;
                 }
 
-                if (localHealthEmpty && !otherHealthEmpty) return Color.red;
-                else if (localHealthEmpty && otherHealthEmpty) return Color.yellow;
-                else return Color.green;
+                if (!isPrimary && ModUISettings.PrimaryEffectColor == "match" && ModUISettings.SecondaryEffectColor == "match")
+                    color = new Color((int)(color.r * 0.8), (int)(color.g * 0.8), (int)(color.b * 0.8));
+                return color;
             }
             else
             {
@@ -55,7 +56,7 @@ namespace DieHarder
                 {
                     return color;
                 }
-                else return Color.black;
+                else return isPrimary ? Color.white : Color.black;
             }
         }
 
@@ -137,28 +138,7 @@ namespace DieHarder
             Core.Instance.CreateShockwave(DamagePos, DamagedPlayer.ParentController);
 
             // Create ragdoll
-            if (Core.Instance.IsInMatch)
-            {
-                if (ModUISettings.RagdollsInMatches > 1)
-                {
-                    Ragdoll newRagdoll = Ragdoll.SpawnRagdoll(DamagedPlayer.ParentController, InvolvedStructure);
-                    newRagdoll.Hit(InvolvedStructure);
-                    newRagdoll.UndoGhostOnClear = true;
-                    newRagdoll.GhostifyOwner();
-                    //newRagdoll.ClearAfter(ModUISettings.CleanupInMatches);
-                }
-            }
-            else
-            {
-                if (ModUISettings.RagdollsOutsideMatches > 1)
-                {
-                    Ragdoll newRagdoll = Ragdoll.SpawnRagdoll(DamagedPlayer.ParentController, InvolvedStructure);
-                    newRagdoll.Hit(InvolvedStructure);
-                    newRagdoll.UndoGhostOnClear = true;
-                    newRagdoll.GhostifyOwner();
-                    newRagdoll.ClearAfter(ModUISettings.CleanupOutsideMatches);
-                }
-            }
+            Core.Instance.CreateRagdollIfNecessary(DamagedPlayer.ParentController);
 
             // Flash the screen again
             ScreenFlash.CreateScreenFlash(PlayerManager.Instance.LocalPlayer.Controller.GetCamera().transform, LayerMask.NameToLayer("PlayerController"));
@@ -369,6 +349,10 @@ namespace DieHarder
         public void CopyPose()
         {
             if (Visuals == null) return;
+
+            SkinnedMeshRenderer smr = Visuals.GetComponentInChildren<SkinnedMeshRenderer>();
+            smr.material = Core.Instance.PrimarySilhouetteMat;
+            if (ParentController.controllerType == Il2CppRUMBLE.Players.ControllerType.Local) smr.material.SetFloat("_IsLocal", 1f);
 
             List<Transform> parentBones = ParentController.GetBones()
                 .Select(bone => bone.Transform)

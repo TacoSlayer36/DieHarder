@@ -19,7 +19,7 @@ namespace DieHarder
             Mod.SetFolder(BuildInfo.Name);
             Mod.AddDescription("Description", "", BuildInfo.Description, new Tags { IsSummary = true });
 
-            Mod.AddToList("Dramatic Effects In Matches", 2, "0: Disabled\n1: On round end\n2: On match end", new Tags());
+            Mod.AddToList("Dramatic Effects In Matches", 2, "0: Disabled\n1: On match end\n2: On round end", new Tags());
             Mod.AddToList("Dramatic Effects Outside Matches", 0, "0: Disabled\n1: On death", new Tags());
             Mod.AddToList("Impact Frame Duration", 500f, "The time in milliseconds the freeze frame will last\n0ms - 1500ms\n(It's recommended to keep this slightly longer than your pre-impact audio length)", new Tags());
             Mod.AddToList("Include Structure In Impact", true, 0, "Include the structure that delivered the killing blow in the impact frame", new Tags());
@@ -29,6 +29,7 @@ namespace DieHarder
             Mod.AddToList("Ragdolls Outside Matches", 1, "0: Disabled\n1: On death\n<#F00>2: On damage (prone to lag)", new Tags());
             Mod.AddToList("Cleanup In Matches", 1, "When to remove ragdolls in matches\n0: Between matches\n1:Between rounds\n2 and above: Seconds until vanishing", new Tags());
             Mod.AddToList("Cleanup Outside Matches", 7, "When to remove ragdolls outside matches\n0: On scene change\n1 and above: Seconds until vanishing", new Tags());
+            Mod.AddToList("Legacy Ragdoll Jank", false, 0, "Re-enable janky ragdoll physics from previous versions", new Tags());
 
             Mod.GetFromFile();
             Mod.ModSaved += OnUISave;
@@ -48,11 +49,12 @@ namespace DieHarder
         public static int DramaticEffectsOutsideMatches => (int)Core.Instance.Mod.Settings[2].SavedValue;
         public static float ImpactFrameDuration => Mathf.Clamp((float)Core.Instance.Mod.Settings[3].SavedValue, 0, 1500f);
         public static bool IncludeStructureInImpact => (bool)Core.Instance.Mod.Settings[4].SavedValue;
-        public static string PrimaryEffectColor => (string)Core.Instance.Mod.Settings[5].SavedValue;
-        public static string SecondaryEffectColor => (string)Core.Instance.Mod.Settings[6].SavedValue;
+        public static string PrimaryEffectColor => ((string)Core.Instance.Mod.Settings[5].SavedValue).ToLower();
+        public static string SecondaryEffectColor => ((string)Core.Instance.Mod.Settings[6].SavedValue).ToLower();
         public static int RagdollsInMatches => (int)Core.Instance.Mod.Settings[7].SavedValue;
         public static int RagdollsOutsideMatches => (int)Core.Instance.Mod.Settings[8].SavedValue;
         public static int CleanupInMatches => (int)Core.Instance.Mod.Settings[9].SavedValue;
-        public static int CleanupOutsideMatches => (int)Core.Instance.Mod.Settings[9].SavedValue;
+        public static int CleanupOutsideMatches => (int)Core.Instance.Mod.Settings[10].SavedValue;
+        public static bool LegacyRagdollJank => (bool)Core.Instance.Mod.Settings[11].SavedValue;
     }
 }

@@ -1,4 +1,5 @@
 ﻿using HarmonyLib;
+using Il2CppPlayFab.ClientModels;
 using Il2CppRUMBLE.CharacterCreation.Interactable;
 using Il2CppRUMBLE.Managers;
 using Il2CppRUMBLE.MoveSystem;
@@ -24,9 +25,9 @@ namespace DieHarder
     {
         private static void Prefix(ref PlayerVisuals __instance)
         {
-            if (Time.timeSinceLevelLoad < 5f)
+            if (Time.timeSinceLevelLoad < 1f)
             {
-                MelonCoroutines.Start(C_Delay(5f - Time.timeSinceLevelLoad, __instance.parentController));
+                MelonCoroutines.Start(C_Delay(1f - Time.timeSinceLevelLoad, __instance.parentController));
             }
             else
             {
@@ -56,6 +57,7 @@ namespace DieHarder
         }
     }
 
+    // Actually runs when a ROUND ends
     [HarmonyPatch(typeof(MatchHandler), nameof(MatchHandler.StopMatch), new Type[] { typeof(bool) })]
     public static class MatchHandler_StopMatch_Patch
     {
@@ -63,14 +65,32 @@ namespace DieHarder
         {
             if (Core.Instance.IsInMatch && MatchHandler.Instance?.CurrentMatchPhase == MatchHandler.MatchPhase.MatchStart)
             {
-                MelonCoroutines.Start(SetMatchHasEnded());
+                MelonCoroutines.Start(SetRoundHasEnded());
             }
         }
 
-        static IEnumerator SetMatchHasEnded()
+        private static void Postfix()
+        {
+            bool isMatchEnd = false;
+
+            int currentRound = MatchHandler.instance.CurrentRound;
+            bool wonThisRound = Core.Instance.GetMatchResult() == Core.MatchResult.Won;
+            List<int> roundResults = MatchHandler.instance.RoundsWonList.ToList();
+
+            if (currentRound == 0) isMatchEnd = false;
+            else if (currentRound == 1)
+            {
+                isMatchEnd = roundResults[0] == 1 && wonThisRound;
+            }
+            else if (currentRound == 2) isMatchEnd = true;
+
+            Core.Instance.WasMatchEnd = isMatchEnd;
+        }
+
+        static IEnumerator SetRoundHasEnded()
         {
             yield return new WaitForSeconds(1.5f);
-            Core.Instance.HasMatchEnded = true;
+            Core.Instance.HasRoundEnded = true;
         }
     }
 
@@ -79,7 +99,7 @@ namespace DieHarder
     {
         private static void Postfix()
         {
-            Core.Instance.HasMatchEnded = false;
+            Core.Instance.HasRoundEnded = false;
             Ragdoll.ClearAllRagdolls();
         }
     }
@@ -107,7 +127,7 @@ namespace DieHarder
         private static bool Prefix(ref Structure __instance, ref Vector3 killVelocity, ref bool playSFX, ref bool playVFX, ref bool networked)
         {
             bool isAnimationRunning = Core.Instance.ActiveImpact != null && Core.Instance.ActiveImpact.IsAnimationRunning;
-            if (isAnimationRunning && Core.Instance.IsInMatch && Core.Instance.HasMatchEnded)
+            if (isAnimationRunning && Core.Instance.IsInMatch && Core.Instance.HasRoundEnded)
             {
                 Core.Instance.StructureKillStorages.Add(new StructureKillStorage(__instance, killVelocity, playSFX, playVFX, networked));
                 return false;
