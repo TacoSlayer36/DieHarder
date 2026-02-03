@@ -116,6 +116,7 @@ namespace DieHarder
         {
             Type = VisualsType.Ragdoll;
             Visuals = GameObject.Instantiate(ParentController.GetSubsystem<PlayerVisuals>().gameObject);
+            Visuals.SetActive(true);
             Setup(Visuals);
 
             Visuals.transform.SetParent(transform);

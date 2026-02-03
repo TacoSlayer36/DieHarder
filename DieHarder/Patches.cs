@@ -100,7 +100,8 @@ namespace DieHarder
         private static void Postfix()
         {
             Core.Instance.HasRoundEnded = false;
-            Ragdoll.ClearAllRagdolls();
+            if (ModUISettings.CleanupInMatches == 2)
+                Ragdoll.ClearAllRagdolls();
         }
     }
 

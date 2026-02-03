@@ -271,6 +271,7 @@ namespace DieHarder
             ModObject_DDOLParent = GameObject.Instantiate(Calls.LoadAssetFromStream<GameObject>(this, "DieHarder.assets.dieharder", "DieHarderDDOL"));
             ModObject_DDOLParent.name = "DieHarderDDOL";
             GameObject.DontDestroyOnLoad(ModObject_DDOLParent);
+            ModObject_DDOLParent.transform.GetChild(0).gameObject.SetActive(false);
 
             GlobalInit = true;
         }
