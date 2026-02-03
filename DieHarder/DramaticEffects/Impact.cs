@@ -196,6 +196,8 @@ namespace DieHarder
 
             if (this != null && gameObject != null)
                 GameObject.Destroy(gameObject);
+
+            Core.Instance.Impacts.Remove(this);
         }
 
         public void ClearStructureSilhouettes()

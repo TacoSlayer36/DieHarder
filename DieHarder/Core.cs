@@ -185,11 +185,6 @@ namespace DieHarder
         {
             if (!GlobalInit) return;
 
-            foreach (Impact impact in Impacts)
-            {
-                if (impact?.gameObject == null) Impacts.Remove(impact);
-            }
-
             foreach (Ragdoll.RagdollPool pool in Ragdoll.RagdollPools.Values)
             {
                 if (pool.parentController?.gameObject == null)
