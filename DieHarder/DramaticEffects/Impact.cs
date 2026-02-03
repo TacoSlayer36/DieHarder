@@ -46,7 +46,7 @@ namespace DieHarder
                 }
 
                 if (!isPrimary && ModUISettings.PrimaryEffectColor == "match" && ModUISettings.SecondaryEffectColor == "match")
-                    color = new Color((int)(color.r * 0.8), (int)(color.g * 0.8), (int)(color.b * 0.8));
+                    color = new Color(color.r * 0.8f, color.g * 0.8f, color.b * 0.8f);
                 return color;
             }
             else
@@ -324,6 +324,12 @@ namespace DieHarder
                         if (ParentController.ControllerType == Il2CppRUMBLE.Players.ControllerType.Local) m.material.SetFloat("_IsLocal", 1);
                     }
                 }
+            }
+
+            Transform visualsChest = Visuals.transform.GetChild(1).GetChild(0).GetChild(4).GetChild(0);
+            for (int i = visualsChest.childCount - 1; i > 0; i--)
+            {
+                if (visualsChest.GetChild(i).name.Contains("VFX")) visualsChest.GetChild(i).gameObject.SetActive(false);
             }
 
             foreach (var c in Visuals.GetComponentsInChildren<Collider>())

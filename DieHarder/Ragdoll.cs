@@ -42,8 +42,8 @@ namespace DieHarder
             }
             else
             {
-                Vector3 launchLateral = new Vector3(newRagdoll.Chest.position.x, 0f, newRagdoll.Chest.position.z).normalized * -25f;
-                newRagdoll.AddVelocity(launchLateral + Vector3.up * 100f);
+                Vector3 launchLateral = new Vector3(newRagdoll.Chest.position.x, 0f, newRagdoll.Chest.position.z).normalized * -45f;
+                newRagdoll.AddVelocity(launchLateral + Vector3.up * 110f);
             }
 
             return newRagdoll;

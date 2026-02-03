@@ -1,10 +1,6 @@
 ﻿/* -- TODO --
- * ModUI
- * OnDamageTaken
  * Legacy Ragdoll Jank option
  * 
- * Remove VFX from ragdolls/silhouettes
- * Pop up from gutter
  * Eyes should sometimes look at you
  * 
  * Howard compatibility
@@ -194,7 +190,7 @@ namespace DieHarder
             playersProcessedThisFrame.Clear();
 
             // Ragdoll on damage
-            if ((IsInMatch && ModUISettings.RagdollsInMatches == 3) || (!IsInMatch && ModUISettings.RagdollsOutsideMatches == 3))
+            if ((IsInMatch && ModUISettings.RagdollsInMatches == 3) || (!IsInMatch && ModUISettings.RagdollsOutsideMatches == 2))
             {
                 foreach (Player player in PlayerManager.Instance.AllPlayers)
                 {
@@ -366,11 +362,14 @@ namespace DieHarder
             }
             else
             {
-                Ragdoll newRagdoll = Ragdoll.SpawnRagdoll(damagedPlayer, closestStructure);
-                newRagdoll.Hit(closestStructure);
-                newRagdoll.UndoGhostOnClear = true;
-                newRagdoll.GhostifyOwner();
-                newRagdoll.ClearAfter(ModUISettings.CleanupOutsideMatches);
+                if (ModUISettings.RagdollsOutsideMatches == 1)
+                {
+                    Ragdoll newRagdoll = Ragdoll.SpawnRagdoll(damagedPlayer, closestStructure);
+                    newRagdoll.Hit(closestStructure);
+                    newRagdoll.UndoGhostOnClear = true;
+                    newRagdoll.GhostifyOwner();
+                    newRagdoll.ClearAfter(ModUISettings.CleanupOutsideMatches);
+                }
             }
         }
 

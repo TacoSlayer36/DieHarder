@@ -39,7 +39,26 @@ namespace DieHarder
 
         public void OnUISave()
         {
-            
+            if (IsInMatch && ModUISettings.CleanupInMatches >= 2)
+            {
+                foreach (Ragdoll.RagdollPool pool in Ragdoll.RagdollPools.Values)
+                {
+                    foreach (Ragdoll ragdoll in pool.PoolItems)
+                    {
+                        ragdoll.ClearAfter(ModUISettings.CleanupInMatches);
+                    }
+                }
+            }
+            else if (!IsInMatch && ModUISettings.CleanupOutsideMatches >= 1)
+            {
+                foreach (Ragdoll.RagdollPool pool in Ragdoll.RagdollPools.Values)
+                {
+                    foreach (Ragdoll ragdoll in pool.PoolItems)
+                    {
+                        ragdoll.ClearAfter(ModUISettings.CleanupOutsideMatches);
+                    }
+                }
+            }
         }
     }
 
