@@ -1,4 +1,5 @@
 ﻿/* -- TODO --
+ * Ragdolls can move players
  * Legacy Ragdoll Jank option
  * 
  * Eyes should sometimes look at you
@@ -140,7 +141,7 @@ namespace DieHarder
         public List<Impact> Impacts = new();
 
         private List<PlayerController> playersProcessedThisFrame = new();
-        private Dictionary<PlayerController, int> playerHealths = new();
+        public Dictionary<PlayerController, int> PlayerHealths = new();
 
         public override void OnLateInitializeMelon()
         {
@@ -171,12 +172,9 @@ namespace DieHarder
                 if (Input.GetKey(KeyCode.LeftShift) && Input.GetKeyDown(KeyCode.T))
                 {
                     Ragdoll raggy = Ragdoll.SpawnRagdoll(PlayerManager.Instance.localPlayer.Controller, FindClosestStructure(PlayerManager.Instance.LocalPlayer.Controller));
-                    if (Input.GetKey(KeyCode.LeftControl))
-                    {
-                        raggy.GhostifyOwner();
-                        raggy.UndoGhostOnClear = true;
-                        raggy.ClearAfter(10f);
-                    }
+                    raggy.GhostifyOwner();
+                    raggy.UndoGhostOnClear = true;
+                    raggy.ClearAfter(10f);
                 }
             }
         }
@@ -199,23 +197,33 @@ namespace DieHarder
 
             playersProcessedThisFrame.Clear();
 
+            if (HasRoundEnded) return;
+
             // Ragdoll on damage
-            if ((IsInMatch && ModUISettings.RagdollsInMatches == 3) || (!IsInMatch && ModUISettings.RagdollsOutsideMatches == 2))
+            if ((IsInMatch && ModUISettings.RagdollsInMatches >= 3) || (!IsInMatch && ModUISettings.RagdollsOutsideMatches >= 2))
             {
                 foreach (Player player in PlayerManager.Instance.AllPlayers)
                 {
                     int storedHealth = 20;
-                    if (playerHealths.ContainsKey(player.Controller)) storedHealth = playerHealths[player.Controller];
+                    if (PlayerHealths.ContainsKey(player.Controller)) storedHealth = PlayerHealths[player.Controller];
 
-                    if (storedHealth > player.Data.HealthPoints)
+                    int damageAmount = storedHealth - player.Data.HealthPoints;
+
+                    if (damageAmount > 0)
                     {
                         StructureStorage closestStructure = FindClosestStructure(player.Controller);
-                        Ragdoll newRagdoll = Ragdoll.SpawnRagdoll(player.Controller, closestStructure);
-                        newRagdoll.Hit(closestStructure);
-                        if (IsInMatch && ModUISettings.CleanupInMatches >= 2) newRagdoll.ClearAfter(ModUISettings.CleanupInMatches);
-                        else if (!IsInMatch) newRagdoll.ClearAfter(ModUISettings.CleanupOutsideMatches);
+
+                        if ((IsInMatch && ModUISettings.RagdollsInMatches < 4) || (!IsInMatch && ModUISettings.RagdollsOutsideMatches < 3))
+                            damageAmount = 1;
+                        for (int i = 0; i < damageAmount; i++)
+                        {
+                            Ragdoll newRagdoll = Ragdoll.SpawnRagdoll(player.Controller, closestStructure);
+                            newRagdoll.Hit(closestStructure);
+                            if (IsInMatch && ModUISettings.CleanupInMatches >= 2) newRagdoll.ClearAfter(ModUISettings.CleanupInMatches);
+                            else if (!IsInMatch) newRagdoll.ClearAfter(ModUISettings.CleanupOutsideMatches);
+                        }
                     }
-                    playerHealths[player.Controller] = player.Data.HealthPoints;
+                    PlayerHealths[player.Controller] = player.Data.HealthPoints;
                 }
             }
         }
@@ -223,6 +231,7 @@ namespace DieHarder
         public override void OnSceneWasLoaded(int buildIndex, string sceneName)
         {
             ActiveImpact?.CancelAnimation();
+            PlayerHealths.Clear();
 
             ModObject_Parent = new GameObject("DieHarder");
             ModObject_Silhouettes = new GameObject("Silhouettes");

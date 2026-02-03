@@ -24,6 +24,8 @@ namespace DieHarder
         public bool UndoGhostOnClear = false;
         public Transform Chest;
 
+        public bool IsJanky = false;
+
         public static Ragdoll SpawnRagdoll(PlayerController player, StructureStorage killingStructure = null)
         {
             Ragdoll newRagdoll;
@@ -38,7 +40,7 @@ namespace DieHarder
             }
             else if (!launchFromGutter)
             {
-                newRagdoll.AddVelocity(new Vector3(Random.RandomRange(-30, 30), 70, Random.RandomRange(-30, 30)));
+                newRagdoll.AddVelocity(new Vector3(Random.RandomRange(-15, 15), 35, Random.RandomRange(-15, 15)));
             }
             else
             {
@@ -55,7 +57,7 @@ namespace DieHarder
             
             string sanitizedName = HelperFunctions.SanitizeString(player.assignedPlayer.Data.GeneralData.PublicUsername + "RagdollPool");
             GameObject newGo = new GameObject(sanitizedName);
-            newGo.transform.SetParent(Core.Instance.ModObject_Ragdolls.transform);
+            newGo.transform.SetParent(Core.Instance.ModObject_Ragdolls.transform, true);
             RagdollPool newPool = new RagdollPool { parentController = player, Transform = newGo.transform };
             RagdollPools[player] = newPool;
             return newPool;
@@ -116,6 +118,7 @@ namespace DieHarder
         {
             Type = VisualsType.Ragdoll;
             Visuals = GameObject.Instantiate(ParentController.GetSubsystem<PlayerVisuals>().gameObject);
+            Visuals.SetActive(false);
             Setup(Visuals);
 
             Visuals.transform.SetParent(transform);
@@ -158,8 +161,15 @@ namespace DieHarder
             {
                 string[] layers = new string[] { "Floor", "CombatFloor", "Environment", "LeanableEnvironment", "PedestalFloor" };
                 rb.includeLayers = new LayerMask().AddToMask(layers);
-                rb.excludeLayers = LayerMask.GetMask("Move", "PlayerController", "PlayerHitbox", "PlayerPhysicsBone", "PlayerFeet", "PlayerOnPlayerInteraction");
-                rb.excludeLayers = rb.excludeLayers | Core.Instance.PhysicsLayerMask;
+                if (!ModUISettings.LegacyRagdollJank)
+                {
+                    rb.excludeLayers = LayerMask.GetMask("Move", "PlayerController", "PlayerHitbox", "PlayerPhysicsBone", "PlayerFeet", "PlayerOnPlayerInteraction");
+                    rb.excludeLayers = rb.excludeLayers | Core.Instance.PhysicsLayerMask;
+                }
+                else
+                {
+                    rb.includeLayers = rb.includeLayers | Core.Instance.PhysicsLayerMask;
+                }
                 rb.gameObject.layer = Core.Instance.PhysicsLayer;
                 rb.ResetCenterOfMass();
             }
@@ -168,6 +178,20 @@ namespace DieHarder
 
             CacheOriginalJointData();
             CopyPose();
+
+            if (ModUISettings.LegacyRagdollJank)
+            {
+                float mult = Random.RandomRange(0.5f, 1.5f);
+                if (Random.RandomRangeInt(0, 2) == 0)
+                    mult *= mult;
+                if (Random.RandomRangeInt(0, 15) == 0)
+                    mult *= mult * mult * mult;
+
+                foreach (BoneRef boneRef in BoneRefs)
+                {
+                    boneRef.RagdollBone.localScale *= mult;
+                }
+            }
         }
 
         IEnumerator C_EnableCollideWithPlayers(float waitTime)
@@ -193,8 +217,16 @@ namespace DieHarder
 
             foreach (BoneRef boneRef in BoneRefs)
             {
-                boneRef.VisualBone.transform.position = boneRef.RagdollBone.transform.position;
-                boneRef.VisualBone.transform.rotation = boneRef.RagdollBone.transform.rotation;
+                if (!IsJanky || !ModUISettings.LegacyRagdollJank)
+                {
+                    boneRef.VisualBone.transform.position = boneRef.RagdollBone.transform.position;
+                    boneRef.VisualBone.transform.rotation = boneRef.RagdollBone.transform.rotation;
+                }
+                else
+                {
+                    boneRef.VisualBone.transform.localPosition = boneRef.RagdollBone.transform.position;
+                    boneRef.VisualBone.transform.localRotation = boneRef.RagdollBone.transform.rotation;
+                }
             }
 
             if (ClearAfterSeconds > 0 && Age >= ClearAfterSeconds)
@@ -251,8 +283,8 @@ namespace DieHarder
 
             HelperFunctions.CopyAllTransforms(parentBones, ragdollBones);
 
-            if (!ModUISettings.LegacyRagdollJank)
-                ResetAnchors();
+            ResetAnchors();
+            Visuals.SetActive(true);
         }
 
         public void ResetAnchors()
@@ -267,7 +299,15 @@ namespace DieHarder
                 if (joint == null) continue;
 
                 Vector3 newAnchorPos = joint.transform.InverseTransformPoint(boneAnchorPosStorage[joint].transform.position);
-                joint.connectedAnchor = originalBoneAnchors[joint] * (ragdollBone.lossyScale.x / 100f);
+                if (!ModUISettings.LegacyRagdollJank)
+                {
+                    joint.connectedAnchor = originalBoneAnchors[joint] * (ragdollBone.lossyScale.x / 100f);
+                }
+                else
+                {
+                    float divisor = Random.RandomRange(50f, 180f);
+                    joint.connectedAnchor = originalBoneAnchors[joint] * (ragdollBone.lossyScale.x / divisor);
+                }
             }
         }
 
@@ -393,6 +433,16 @@ namespace DieHarder
                 
                 poolRagdoll.gameObject.SetActive(true);
                 poolRagdoll.CopyPose();
+
+                if (ModUISettings.LegacyRagdollJank)
+                {
+                    poolRagdoll.IsJanky = Random.RandomRangeInt(0, 30) == 0;
+                    if (Random.RandomRangeInt(0, 10) == 0)
+                    {
+                        poolRagdoll.AddVelocity(new Vector3(Random.RandomRange(-100f, 100f), Random.RandomRange(-100f, 100f), Random.RandomRange(-100f, 100f)));
+                    }
+                }
+
                 return poolRagdoll;
             }
 

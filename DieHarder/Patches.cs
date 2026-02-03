@@ -91,6 +91,7 @@ namespace DieHarder
         {
             yield return new WaitForSeconds(1.5f);
             Core.Instance.HasRoundEnded = true;
+            Core.Instance.PlayerHealths.Clear();
         }
     }
 

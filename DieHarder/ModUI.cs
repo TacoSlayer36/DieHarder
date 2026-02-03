@@ -25,9 +25,9 @@ namespace DieHarder
             Mod.AddToList("Include Structure In Impact", true, 0, "Include the structure that delivered the killing blow in the impact frame", new Tags());
             Mod.AddToList("Primary Effect Color", "#000000", "The color of the player/structure silhouettes during dramatic effects\nUse \"Match\" to base it on winning/losing matches and rounds", new Tags());
             Mod.AddToList("Secondary Effect Color", "Match", "The color of the background during dramatic effects\nUse \"Match\" to base it on winning/losing matches and rounds", new Tags());
-            Mod.AddToList("Ragdolls In Matches", 2, "0: Disabled\n1: On match end\n2: On round end\n<#F00>3: On damage (prone to lag)", new Tags());
-            Mod.AddToList("Ragdolls Outside Matches", 1, "0: Disabled\n1: On death\n<#F00>2: On damage (prone to lag)", new Tags());
-            Mod.AddToList("Cleanup In Matches", 1, "When to remove ragdolls in matches\n0: Between matches\n1:Between rounds\n2 and above: Seconds until vanishing", new Tags());
+            Mod.AddToList("Ragdolls In Matches", 2, "0: Disabled\n1: On match end\n2: On round end\n<#F80>3: On hit (prone to lag)\n<#F00>4: Per damage (God help you)", new Tags());
+            Mod.AddToList("Ragdolls Outside Matches", 1, "0: Disabled\n1: On death\n<#F80>2: On damage (prone to lag)\n<#F00>3: Per damage (God help you)", new Tags());
+            Mod.AddToList("Cleanup In Matches", 1, "When to remove ragdolls in matches\n0: Between matches\n1: Between rounds\n2 and above: Seconds until vanishing", new Tags());
             Mod.AddToList("Cleanup Outside Matches", 7, "When to remove ragdolls outside matches\n0: On scene change\n1 and above: Seconds until vanishing", new Tags());
             Mod.AddToList("Legacy Ragdoll Jank", false, 0, "Re-enable janky ragdoll physics from previous versions", new Tags());
 
