@@ -307,27 +307,40 @@ namespace DieHarder
             gameObject.SetActive(active);
         }
 
-        public void GhostifyOwner()
+        public static void Ghostify(PlayerController player)
         {
-            SkinnedMeshRenderer smr = ParentController.GetSubsystem<PlayerVisuals>().GetComponentInChildren<SkinnedMeshRenderer>();
+            SkinnedMeshRenderer smr = player.GetSubsystem<PlayerVisuals>().GetComponentInChildren<SkinnedMeshRenderer>();
             if (LocalHeadClippedMat == null)
             {
                 LocalHeadClippedMat = smr.material;
                 LocalHeadClippedMat.hideFlags = HideFlags.HideAndDontSave | HideFlags.DontUnloadUnusedAsset;
             }
             smr.material = Core.Instance.GhostMat;
-            float isLocal = ParentController.ControllerType == Il2CppRUMBLE.Players.ControllerType.Local ? 1f : 0f;
+            float isLocal = player.ControllerType == Il2CppRUMBLE.Players.ControllerType.Local ? 1f : 0f;
             smr.material.SetFloat("_IsLocal", isLocal);
+        }
+
+        public void GhostifyOwner()
+        {
+            Ghostify(ParentController);
+        }
+
+        public static void UnGhostify(PlayerController player)
+        {
+            PlayerVisuals pv = player.GetSubsystem<PlayerVisuals>();
+            SkinnedMeshRenderer smr = pv.GetComponentInChildren<SkinnedMeshRenderer>();
+            if (player.ControllerType == Il2CppRUMBLE.Players.ControllerType.Local)
+                smr.material = LocalHeadClippedMat;
+            else
+            {
+                if (pv.NonHeadClippedMaterial == null) return;
+                smr.material = pv.NonHeadClippedMaterial;
+            }
         }
 
         public void UnGhostifyOwner()
         {
-            PlayerVisuals pv = ParentController.GetSubsystem<PlayerVisuals>();
-            SkinnedMeshRenderer smr = pv.GetComponentInChildren<SkinnedMeshRenderer>();
-            if (ParentController.ControllerType == Il2CppRUMBLE.Players.ControllerType.Local)
-                smr.material = LocalHeadClippedMat;
-            else 
-                smr.material = pv.NonHeadClippedMaterial;
+            UnGhostify(ParentController);
         }
 
         public void ClearAfter(float time)
