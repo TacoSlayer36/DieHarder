@@ -272,6 +272,7 @@ namespace DieHarder
         {
             AudioPlayer.clip = clip;
             AudioPlayer.Play();
+            AudioPlayer.volume = ModUISettings.DramaticEffectsVolume;
         }
     }
 
