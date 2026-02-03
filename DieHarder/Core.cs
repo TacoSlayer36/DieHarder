@@ -2,6 +2,7 @@
  * Legacy Ragdoll Jank option
  * 
  * Eyes should sometimes look at you
+ * Disable ragdolls when their parent leaves
  * 
  * Howard compatibility
  * Replay Mod compatibility
@@ -183,6 +184,20 @@ namespace DieHarder
         public override void OnFixedUpdate()
         {
             if (!GlobalInit) return;
+
+            foreach (Impact impact in Impacts)
+            {
+                if (impact?.gameObject == null) Impacts.Remove(impact);
+            }
+
+            foreach (Ragdoll.RagdollPool pool in Ragdoll.RagdollPools.Values)
+            {
+                if (pool.parentController?.gameObject == null)
+                {
+                    GameObject.Destroy(pool.Transform.gameObject);
+                    Ragdoll.RagdollPools.Remove(pool.parentController);
+                }
+            }
 
             StructureStorage.GameStates.Add(StructureStorage.GenerateStructureStorages());
             if (StructureStorage.GameStates.Count > 3) StructureStorage.GameStates.Remove(StructureStorage.GameStates.First());

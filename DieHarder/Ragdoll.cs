@@ -116,7 +116,6 @@ namespace DieHarder
         {
             Type = VisualsType.Ragdoll;
             Visuals = GameObject.Instantiate(ParentController.GetSubsystem<PlayerVisuals>().gameObject);
-            Visuals.SetActive(true);
             Setup(Visuals);
 
             Visuals.transform.SetParent(transform);
@@ -387,6 +386,7 @@ namespace DieHarder
             public Ragdoll CreateRagdoll()
             {
                 GameObject newGo = GameObject.Instantiate(Core.Instance.ModObject_DDOLRagdoll);
+                newGo.SetActive(true);
                 newGo.name = HelperFunctions.SanitizeString(parentController.assignedPlayer.Data.GeneralData.PublicUsername + "Ragdoll");
                 newGo.transform.SetParent(RagdollPools[parentController].Transform);
                 Ragdoll newRagdoll = newGo.AddComponent<Ragdoll>();
