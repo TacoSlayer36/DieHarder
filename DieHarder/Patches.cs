@@ -102,6 +102,10 @@ namespace DieHarder
             Core.Instance.HasRoundEnded = false;
             if (ModUISettings.CleanupInMatches == 2)
                 Ragdoll.ClearAllRagdolls();
+            foreach (Player player in PlayerManager.Instance.AllPlayers)
+            {
+                Ragdoll.UnGhostify(player.Controller);
+            }
         }
     }
 

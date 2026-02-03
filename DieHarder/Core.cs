@@ -194,7 +194,7 @@ namespace DieHarder
             {
                 if (pool.parentController?.gameObject == null)
                 {
-                    GameObject.Destroy(pool.Transform.gameObject);
+                    GameObject.Destroy(pool?.Transform?.gameObject);
                     Ragdoll.RagdollPools.Remove(pool.parentController);
                 }
             }
