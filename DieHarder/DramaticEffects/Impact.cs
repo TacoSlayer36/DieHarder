@@ -28,7 +28,7 @@ namespace DieHarder
         object AnimationCoroutine;
         public bool IsAnimationRunning = false;
 
-        public static float FogEndDistanceStorage = RenderSettings.fogDensity;
+        public static float FogEndDistanceStorage = -1f;
 
         public static Color GetColorFromSetting(string colorString, bool isPrimary)
         {
@@ -104,7 +104,8 @@ namespace DieHarder
             }
 
             // Disable fog
-            FogEndDistanceStorage = RenderSettings.fogEndDistance;
+            if (FogEndDistanceStorage == -1)
+                FogEndDistanceStorage = RenderSettings.fogEndDistance;
             RenderSettings.fogEndDistance = 10000f;
 
             // Move each silhouette into place (and turn on their camera)
@@ -130,7 +131,7 @@ namespace DieHarder
             yield return new WaitForSeconds(ModUISettings.ImpactFrameDuration / 1000f);
 
             // Play impact sound
-            AudioManager.PlaySoundIfFileExists(Core.ImpactAudioPath);
+            AudioManager.PlaySoundIfFileExists(Core.ImpactAudioPath, ModUISettings.DramaticEffectsVolume);
 
             // Create shockwave
             Core.Instance.CreateShockwave(DamagePos, DamagedPlayer.ParentController);
@@ -188,7 +189,8 @@ namespace DieHarder
 
             if (strong)
             {
-                RenderSettings.fogDensity = FogEndDistanceStorage;
+                if (FogEndDistanceStorage != -1)
+                RenderSettings.fogEndDistance = FogEndDistanceStorage;
             }
 
             if (AnimationCoroutine != null) MelonCoroutines.Stop(AnimationCoroutine);

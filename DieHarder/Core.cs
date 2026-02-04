@@ -1,8 +1,11 @@
 ﻿/* -- TODO --
-Shiftstones on ragdolls
-Howard compatibility
-Replay Mod compatibility
-Eyes should sometimes look at you
+ * LIV and Rock Cam compatibility
+ * 
+ * Shockwave should move ragdolls
+ * Shiftstones on ragdolls
+ * Howard compatibility
+ * Replay Mod compatibility
+ * Eyes should sometimes look at you
 */
 
 using RumbleModdingAPI;
@@ -19,6 +22,8 @@ using System.Linq;
 using System.Collections;
 using Il2CppRUMBLE.Managers;
 using Il2CppRUMBLE.Interactions.InteractionBase;
+using Il2CppRUMBLE.Networking.MatchFlow;
+using Il2Cpp;
 
 [assembly: MelonInfo(typeof(DieHarder.Core), DieHarder.BuildInfo.Name, DieHarder.BuildInfo.Version, DieHarder.BuildInfo.Author)]
 [assembly: MelonGame("Buckethead Entertainment", "RUMBLE")]
@@ -37,7 +42,7 @@ namespace DieHarder
 
     public partial class Core : MelonMod
     {
-        public float V_ShockwaveMove = 10f;
+        public float V_ShockwaveMove = 30f;
 
         public bool GlobalInit = false;
         public static Core Instance;
@@ -194,9 +199,9 @@ namespace DieHarder
                     try
                     {
                         GameObject.Destroy(pvc?.gameObject);
-                        PlayerSilhouettes.Remove(pvc?.ParentController);
                     }
                     catch { }
+                    PlayerSilhouettes.Remove(pvc?.ParentController);
                 }
             }
 
@@ -244,6 +249,9 @@ namespace DieHarder
         {
             ActiveImpact?.CancelAnimation();
             PlayerHealths.Clear();
+            PlayerSilhouettes.Clear();
+
+            Impact.FogEndDistanceStorage = -1f;
 
             ModObject_Parent = new GameObject("DieHarder");
             ModObject_Silhouettes = new GameObject("Silhouettes");
@@ -307,6 +315,29 @@ namespace DieHarder
             GlobalInit = true;
         }
 
+        public void DetermineIfMatchEnd()
+        {
+            bool isMatchEnd = false;
+            if (MatchHandler.instance == null)
+            {
+                WasMatchEnd = false;
+                return;
+            }
+
+            int currentRound = MatchHandler.instance.CurrentRound;
+            bool wonThisRound = Core.Instance.GetMatchResult() == Core.MatchResult.Won;
+            List<int> roundResults = MatchHandler.instance.RoundsWonList.ToList();
+
+            if (currentRound == 0) isMatchEnd = false;
+            else if (currentRound == 1)
+            {
+                isMatchEnd = roundResults[0] == 1 && wonThisRound;
+            }
+            else if (currentRound == 2) isMatchEnd = true;
+
+            WasMatchEnd = isMatchEnd;
+        }
+
         public MatchResult GetMatchResult()
         {
             bool localHealthEmpty = true;
@@ -340,6 +371,13 @@ namespace DieHarder
             PlayerHealth playerHealth = player.GetSubsystem<PlayerHealth>();
             playerHealth.OnHealthDepleted.AddListener((UnityAction)(() => OnPlayerHealthDepleted(playerHealth)));
 
+            if (Ragdoll.LocalHeadClippedMat == null)
+            {
+                SkinnedMeshRenderer smr = PlayerManager.instance.localPlayer.Controller.GetSubsystem<PlayerVisuals>().GetComponentInChildren<SkinnedMeshRenderer>();
+                Ragdoll.LocalHeadClippedMat = smr.material;
+                Ragdoll.LocalHeadClippedMat.hideFlags = HideFlags.HideAndDontSave | HideFlags.DontUnloadUnusedAsset;
+            }
+
             CreateSilhouetteFromPlayer(player);
 
             playersProcessedThisFrame.Add(player);
@@ -349,6 +387,8 @@ namespace DieHarder
         {
             if (IsInMatch && HasRoundEnded) return;
             if (IsInMatch) HasRoundEnded = true;
+
+            DetermineIfMatchEnd();
 
             PlayerController damagedPlayer = playerHealth.ParentController;
 
@@ -389,7 +429,8 @@ namespace DieHarder
                     newRagdoll.Hit(closestStructure);
                     newRagdoll.UndoGhostOnClear = true;
                     newRagdoll.GhostifyOwner();
-                    if (ModUISettings.CleanupInMatches >= 2) newRagdoll.ClearAfter(ModUISettings.CleanupInMatches);
+                    if (ModUISettings.CleanupInMatches >= 2)
+                        newRagdoll.ClearAfter(ModUISettings.CleanupInMatches);
                 }
             }
             else
@@ -398,8 +439,11 @@ namespace DieHarder
                 {
                     Ragdoll newRagdoll = Ragdoll.SpawnRagdoll(damagedPlayer, closestStructure);
                     newRagdoll.Hit(closestStructure);
-                    newRagdoll.UndoGhostOnClear = true;
-                    newRagdoll.GhostifyOwner();
+                    if (ModUISettings.CleanupOutsideMatches > 0)
+                    {
+                        newRagdoll.UndoGhostOnClear = true;
+                        newRagdoll.GhostifyOwner();
+                    }
                     newRagdoll.ClearAfter(ModUISettings.CleanupOutsideMatches);
                 }
             }
