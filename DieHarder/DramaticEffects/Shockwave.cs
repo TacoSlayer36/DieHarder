@@ -27,6 +27,8 @@ namespace DieHarder
 
         public static List<GameObject> Dusts = new();
 
+        public List<Ragdoll> movedRagdolls = new();
+
         public float Timer = 0f;
 
         void Start()
@@ -66,9 +68,26 @@ namespace DieHarder
                 if (Timer > 3f) GameObject.Destroy(ForceField);
             }
 
-            if (ForceField == null)
+            if (Timer > 10f)
             {
                 GameObject.Destroy(gameObject);
+            }
+
+            float fogReturn = Mathf.Lerp(10000f, Impact.FogEndDistanceStorage, Timer / 10f);
+            RenderSettings.fogEndDistance = Mathf.Clamp(fogReturn, Impact.FogEndDistanceStorage, 10000f);
+
+            foreach (Ragdoll.RagdollPool pool in Ragdoll.RagdollPools.Values)
+            {
+                foreach (Ragdoll ragdoll in pool.PoolItems)
+                {
+                    if (movedRagdolls.Contains(ragdoll)) continue;
+                    float distFromShockwave = Vector3.Distance(ragdoll.Chest.position, transform.position);
+                    if (distFromShockwave <= transform.localScale.x)
+                    {
+                        movedRagdolls.Add(ragdoll);
+                        ragdoll.AddVelocity((ragdoll.Chest.position - transform.position).normalized * Core.Instance.V_ShockwaveMove);
+                    }
+                }
             }
         }
 

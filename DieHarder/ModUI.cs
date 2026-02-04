@@ -23,7 +23,7 @@ namespace DieHarder
             Mod.AddToList("Dramatic Effects Outside Matches", 0, "0: Disabled\n1: On death", new Tags());
             Mod.AddToList("Impact Frame Duration", 500f, "The time in milliseconds the freeze frame will last\n0ms - 1500ms\n(It's recommended to keep this slightly longer than your pre-impact audio length)", new Tags());
             Mod.AddToList("Include Structure In Impact", true, 0, "Include the structure that delivered the killing blow in the impact frame", new Tags());
-            Mod.AddToList("Dramatic Effects Volume", 1, "Volume of the sounds for the dramatic effects\n0-1; default is 1", new Tags());
+            Mod.AddToList("Dramatic Effects Volume", 1f, "Volume of the sounds for the dramatic effects\n0-1; default is 1", new Tags());
             Mod.AddToList("Primary Effect Color", "#000000", "The color of the player/structure silhouettes during dramatic effects\nUse \"Match\" to base it on winning/losing matches and rounds", new Tags());
             Mod.AddToList("Secondary Effect Color", "Match", "The color of the background during dramatic effects\nUse \"Match\" to base it on winning/losing matches and rounds", new Tags());
             Mod.AddToList("Ragdolls In Matches", 2, "0: Disabled\n1: On match end\n2: On round end\n<#F80>3: On hit (prone to lag)\n<#F00>4: Per damage (God help you)", new Tags());

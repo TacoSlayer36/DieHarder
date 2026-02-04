@@ -48,6 +48,12 @@ namespace DieHarder
                 newRagdoll.AddVelocity(launchLateral + Vector3.up * 110f);
             }
 
+            if ((Core.Instance.IsInMatch && ModUISettings.RagdollsInMatches >= 3) || (!Core.Instance.IsInMatch && ModUISettings.RagdollsOutsideMatches >= 2))
+            {
+                newRagdoll.AddVelocity(newRagdoll.Chest.GetComponentInChildren<Rigidbody>().velocity);
+                newRagdoll.AddVelocity(new Vector3(Random.RandomRange(-15, 15), 35, Random.RandomRange(-15, 15)));
+            }
+
             return newRagdoll;
         }
 
@@ -109,7 +115,7 @@ namespace DieHarder
                     dist = Mathf.Clamp(dist, 0.2f, 2.5f);
                     float proximityMult = 2.5f - dist;
                     Vector3 explodeDir = (ragdoll.Chest.position - source.Pos).normalized;
-                    ragdoll.AddVelocity(explodeDir * proximityMult * structureMult * 100f);
+                    ragdoll.AddVelocity(explodeDir * proximityMult * structureMult * 75f);
                 }
             }
         }
@@ -161,20 +167,12 @@ namespace DieHarder
             {
                 string[] layers = new string[] { "Floor", "CombatFloor", "Environment", "LeanableEnvironment", "PedestalFloor" };
                 rb.includeLayers = new LayerMask().AddToMask(layers);
+                rb.includeLayers = rb.includeLayers | Core.Instance.PhysicsLayerMask;
                 if (!ModUISettings.LegacyRagdollJank)
-                {
-                    rb.excludeLayers = LayerMask.GetMask("Move", "PlayerController", "PlayerHitbox", "PlayerPhysicsBone", "PlayerFeet", "PlayerOnPlayerInteraction");
-                    rb.excludeLayers = rb.excludeLayers | Core.Instance.PhysicsLayerMask;
-                }
-                else
-                {
-                    rb.includeLayers = rb.includeLayers | Core.Instance.PhysicsLayerMask;
-                }
+                rb.excludeLayers = LayerMask.GetMask("Move", "PlayerController", "PlayerHitbox", "PlayerPhysicsBone", "PlayerFeet", "PlayerOnPlayerInteraction");
                 rb.gameObject.layer = Core.Instance.PhysicsLayer;
                 rb.ResetCenterOfMass();
             }
-
-            MelonCoroutines.Start(C_EnableCollideWithPlayers(1.0f));
 
             CacheOriginalJointData();
             CopyPose();
@@ -194,20 +192,18 @@ namespace DieHarder
             }
         }
 
-        IEnumerator C_EnableCollideWithPlayers(float waitTime)
+        IEnumerator C_SetLayersDelayed()
         {
-            yield return new WaitForSeconds(waitTime);
-
-            if (this?.transform?.GetChild(0) != null)
+            foreach (BoneRef boneRef in BoneRefs)
             {
-                foreach (Rigidbody rb in transform.GetChild(0).GetComponentsInChildren<Rigidbody>())
-                {
-                    if (rb == null) continue;
-                    rb.excludeLayers = rb.excludeLayers.RemoveFromMask(new string[] { "PlayerOnPlayerInteraction" });
-                    rb.excludeLayers = rb.excludeLayers & ~Core.Instance.PhysicsLayerMask;
-                    rb.includeLayers = rb.includeLayers.AddToMask(new string[] { "PlayerOnPlayerInteraction" });
-                    rb.includeLayers = rb.includeLayers | Core.Instance.PhysicsLayerMask;
-                }
+                boneRef.RagdollBone.gameObject.layer = 0;
+            }
+
+            yield return new WaitForSeconds(1f);
+
+            foreach (BoneRef boneRef in BoneRefs)
+            {
+                boneRef.RagdollBone.gameObject.layer = Core.Instance.PhysicsLayer;
             }
         }
 
@@ -215,6 +211,22 @@ namespace DieHarder
         {
             Age += Time.deltaTime;
 
+            TrackVisualsToRBBones();
+
+            if (ClearAfterSeconds > 0 && Age >= ClearAfterSeconds)
+            {
+                if (UndoGhostOnClear)
+                {
+                    UnGhostifyOwner();
+                }
+                SetActive(false);
+            }
+
+            if (transform.GetChild(0).GetChild(0).position.y < -20f) SetActive(false);
+        }
+
+        private void TrackVisualsToRBBones()
+        {
             foreach (BoneRef boneRef in BoneRefs)
             {
                 if (!IsJanky || !ModUISettings.LegacyRagdollJank)
@@ -228,17 +240,6 @@ namespace DieHarder
                     boneRef.VisualBone.transform.localRotation = boneRef.RagdollBone.transform.rotation;
                 }
             }
-
-            if (ClearAfterSeconds > 0 && Age >= ClearAfterSeconds)
-            {
-                if (UndoGhostOnClear)
-                {
-                    UnGhostifyOwner();
-                }
-                SetActive(false);
-            }
-
-            if (transform.GetChild(0).GetChild(0).position.y < -20f) SetActive(false);
         }
 
         private void CacheOriginalJointData()
@@ -275,15 +276,18 @@ namespace DieHarder
             {
                 if (rb == null) continue;
                 rb.velocity = Vector3.zero;
-                rb.excludeLayers = rb.excludeLayers.AddToMask(new string[] { "PlayerOnPlayerInteraction" });
-                rb.includeLayers = rb.includeLayers.RemoveFromMask(new string[] { "PlayerOnPlayerInteraction" });
             }
-
-            MelonCoroutines.Start(C_EnableCollideWithPlayers(1f));
 
             HelperFunctions.CopyAllTransforms(parentBones, ragdollBones);
 
             ResetAnchors();
+
+            if ((Core.Instance.IsInMatch && ModUISettings.RagdollsInMatches == 4) || (!Core.Instance.IsInMatch && ModUISettings.RagdollsOutsideMatches == 3))
+            {
+                MelonCoroutines.Start(C_SetLayersDelayed());
+            }
+
+            TrackVisualsToRBBones();
             Visuals.SetActive(true);
         }
 

@@ -1,13 +1,8 @@
 ﻿/* -- TODO --
- * Ragdolls can move players
- * Legacy Ragdoll Jank option
- * 
- * Eyes should sometimes look at you
- * Disable ragdolls when their parent leaves
- * 
- * Howard compatibility
- * Replay Mod compatibility
- * Shiftstones on ragdolls
+Shiftstones on ragdolls
+Howard compatibility
+Replay Mod compatibility
+Eyes should sometimes look at you
 */
 
 using RumbleModdingAPI;
@@ -42,7 +37,7 @@ namespace DieHarder
 
     public partial class Core : MelonMod
     {
-        public float V_Launch = 100f;
+        public float V_ShockwaveMove = 100f;
 
         public bool GlobalInit = false;
         public static Core Instance;
@@ -185,10 +180,23 @@ namespace DieHarder
 
             foreach (Ragdoll.RagdollPool pool in Ragdoll.RagdollPools.Values)
             {
-                if (pool.parentController?.gameObject == null)
+                if (pool == null || pool.parentController == null || pool.parentController.gameObject == null)
                 {
                     GameObject.Destroy(pool?.Transform?.gameObject);
                     Ragdoll.RagdollPools.Remove(pool.parentController);
+                }
+            }
+
+            foreach (PlayerVisualsClone pvc in PlayerSilhouettes.Values)
+            {
+                if (pvc == null || pvc.ParentController == null || pvc.ParentController.gameObject == null)
+                {
+                    try
+                    {
+                        GameObject.Destroy(pvc?.gameObject);
+                        PlayerSilhouettes.Remove(pvc?.ParentController);
+                    }
+                    catch { }
                 }
             }
 
@@ -204,8 +212,12 @@ namespace DieHarder
             {
                 foreach (Player player in PlayerManager.Instance.AllPlayers)
                 {
-                    int storedHealth = 20;
+                    if (player == null || player.Controller == null) continue;
+
+                    int storedHealth = 0;
                     if (PlayerHealths.ContainsKey(player.Controller)) storedHealth = PlayerHealths[player.Controller];
+
+                    if (player.Controller.GetSubsystem<Il2CppRUMBLE.Players.Subsystems.PlayerHealth>().IsRegeneratingHealth) continue;
 
                     int damageAmount = storedHealth - player.Data.HealthPoints;
 
@@ -336,7 +348,7 @@ namespace DieHarder
         public void OnPlayerHealthDepleted(PlayerHealth playerHealth)
         {
             if (IsInMatch && HasRoundEnded) return;
-            HasRoundEnded = true;
+            if (IsInMatch) HasRoundEnded = true;
 
             PlayerController damagedPlayer = playerHealth.ParentController;
 
