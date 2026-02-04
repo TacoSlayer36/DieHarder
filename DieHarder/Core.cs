@@ -37,7 +37,7 @@ namespace DieHarder
 
     public partial class Core : MelonMod
     {
-        public float V_ShockwaveMove = 100f;
+        public float V_ShockwaveMove = 10f;
 
         public bool GlobalInit = false;
         public static Core Instance;
