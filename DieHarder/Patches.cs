@@ -69,24 +69,6 @@ namespace DieHarder
             }
         }
 
-        private static void Postfix()
-        {
-            bool isMatchEnd = false;
-
-            int currentRound = MatchHandler.instance.CurrentRound;
-            bool wonThisRound = Core.Instance.GetMatchResult() == Core.MatchResult.Won;
-            List<int> roundResults = MatchHandler.instance.RoundsWonList.ToList();
-
-            if (currentRound == 0) isMatchEnd = false;
-            else if (currentRound == 1)
-            {
-                isMatchEnd = roundResults[0] == 1 && wonThisRound;
-            }
-            else if (currentRound == 2) isMatchEnd = true;
-
-            Core.Instance.WasMatchEnd = isMatchEnd;
-        }
-
         static IEnumerator SetRoundHasEnded()
         {
             yield return new WaitForSeconds(1.5f);

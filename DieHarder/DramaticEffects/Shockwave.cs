@@ -68,24 +68,30 @@ namespace DieHarder
                 if (Timer > 3f) GameObject.Destroy(ForceField);
             }
 
-            if (Timer > 10f)
+            if (Timer > 11f)
             {
                 GameObject.Destroy(gameObject);
             }
 
-            float fogReturn = Mathf.Lerp(10000f, Impact.FogEndDistanceStorage, Timer / 10f);
-            RenderSettings.fogEndDistance = Mathf.Clamp(fogReturn, Impact.FogEndDistanceStorage, 10000f);
+            if (Timer <= 10f)
+            {
+                float fogReturn = Mathf.Lerp(10000f, Impact.FogEndDistanceStorage, Timer / 10f);
+                RenderSettings.fogEndDistance = Mathf.Clamp(fogReturn, Impact.FogEndDistanceStorage, 10000f);
+            }
 
+            if (ForceField == null) return;
             foreach (Ragdoll.RagdollPool pool in Ragdoll.RagdollPools.Values)
             {
                 foreach (Ragdoll ragdoll in pool.PoolItems)
                 {
                     if (movedRagdolls.Contains(ragdoll)) continue;
-                    float distFromShockwave = Vector3.Distance(ragdoll.Chest.position, transform.position);
-                    if (distFromShockwave <= transform.localScale.x)
+                    float distFromShockwave = Vector3.Distance(ragdoll.Chest.position, ForceField.transform.position);
+                    if (distFromShockwave <= ForceField.transform.localScale.x)
                     {
                         movedRagdolls.Add(ragdoll);
-                        ragdoll.AddVelocity((ragdoll.Chest.position - transform.position).normalized * Core.Instance.V_ShockwaveMove);
+
+                        Vector3 shockwavePosOffset = new Vector3(ForceField.transform.position.x, -1f, ForceField.transform.position.z);
+                        ragdoll.AddVelocity((ragdoll.Chest.position - shockwavePosOffset).normalized * Core.Instance.V_ShockwaveMove);
                     }
                 }
             }
