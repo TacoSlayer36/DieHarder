@@ -1,12 +1,8 @@
 ﻿/* -- TODO --
- * Legacy Ragdoll Jank option
- * 
- * Eyes should sometimes look at you
- * Disable ragdolls when their parent leaves
- * 
- * Howard compatibility
- * Replay Mod compatibility
- * Shiftstones on ragdolls
+Shiftstones on ragdolls
+Howard compatibility
+Replay Mod compatibility
+Eyes should sometimes look at you
 */
 
 using RumbleModdingAPI;
@@ -41,7 +37,7 @@ namespace DieHarder
 
     public partial class Core : MelonMod
     {
-        public float V_Launch = 100f;
+        public float V_ShockwaveMove = 10f;
 
         public bool GlobalInit = false;
         public static Core Instance;
@@ -140,7 +136,7 @@ namespace DieHarder
         public List<Impact> Impacts = new();
 
         private List<PlayerController> playersProcessedThisFrame = new();
-        private Dictionary<PlayerController, int> playerHealths = new();
+        public Dictionary<PlayerController, int> PlayerHealths = new();
 
         public override void OnLateInitializeMelon()
         {
@@ -171,12 +167,9 @@ namespace DieHarder
                 if (Input.GetKey(KeyCode.LeftShift) && Input.GetKeyDown(KeyCode.T))
                 {
                     Ragdoll raggy = Ragdoll.SpawnRagdoll(PlayerManager.Instance.localPlayer.Controller, FindClosestStructure(PlayerManager.Instance.LocalPlayer.Controller));
-                    if (Input.GetKey(KeyCode.LeftControl))
-                    {
-                        raggy.GhostifyOwner();
-                        raggy.UndoGhostOnClear = true;
-                        raggy.ClearAfter(10f);
-                    }
+                    raggy.GhostifyOwner();
+                    raggy.UndoGhostOnClear = true;
+                    raggy.ClearAfter(10f);
                 }
             }
         }
@@ -187,10 +180,23 @@ namespace DieHarder
 
             foreach (Ragdoll.RagdollPool pool in Ragdoll.RagdollPools.Values)
             {
-                if (pool.parentController?.gameObject == null)
+                if (pool == null || pool.parentController == null || pool.parentController.gameObject == null)
                 {
                     GameObject.Destroy(pool?.Transform?.gameObject);
                     Ragdoll.RagdollPools.Remove(pool.parentController);
+                }
+            }
+
+            foreach (PlayerVisualsClone pvc in PlayerSilhouettes.Values)
+            {
+                if (pvc == null || pvc.ParentController == null || pvc.ParentController.gameObject == null)
+                {
+                    try
+                    {
+                        GameObject.Destroy(pvc?.gameObject);
+                        PlayerSilhouettes.Remove(pvc?.ParentController);
+                    }
+                    catch { }
                 }
             }
 
@@ -199,23 +205,37 @@ namespace DieHarder
 
             playersProcessedThisFrame.Clear();
 
+            if (HasRoundEnded) return;
+
             // Ragdoll on damage
-            if ((IsInMatch && ModUISettings.RagdollsInMatches == 3) || (!IsInMatch && ModUISettings.RagdollsOutsideMatches == 2))
+            if ((IsInMatch && ModUISettings.RagdollsInMatches >= 3) || (!IsInMatch && ModUISettings.RagdollsOutsideMatches >= 2))
             {
                 foreach (Player player in PlayerManager.Instance.AllPlayers)
                 {
-                    int storedHealth = 20;
-                    if (playerHealths.ContainsKey(player.Controller)) storedHealth = playerHealths[player.Controller];
+                    if (player == null || player.Controller == null) continue;
 
-                    if (storedHealth > player.Data.HealthPoints)
+                    int storedHealth = 0;
+                    if (PlayerHealths.ContainsKey(player.Controller)) storedHealth = PlayerHealths[player.Controller];
+
+                    if (player.Controller.GetSubsystem<Il2CppRUMBLE.Players.Subsystems.PlayerHealth>().IsRegeneratingHealth) continue;
+
+                    int damageAmount = storedHealth - player.Data.HealthPoints;
+
+                    if (damageAmount > 0)
                     {
                         StructureStorage closestStructure = FindClosestStructure(player.Controller);
-                        Ragdoll newRagdoll = Ragdoll.SpawnRagdoll(player.Controller, closestStructure);
-                        newRagdoll.Hit(closestStructure);
-                        if (IsInMatch && ModUISettings.CleanupInMatches >= 2) newRagdoll.ClearAfter(ModUISettings.CleanupInMatches);
-                        else if (!IsInMatch) newRagdoll.ClearAfter(ModUISettings.CleanupOutsideMatches);
+
+                        if ((IsInMatch && ModUISettings.RagdollsInMatches < 4) || (!IsInMatch && ModUISettings.RagdollsOutsideMatches < 3))
+                            damageAmount = 1;
+                        for (int i = 0; i < damageAmount; i++)
+                        {
+                            Ragdoll newRagdoll = Ragdoll.SpawnRagdoll(player.Controller, closestStructure);
+                            newRagdoll.Hit(closestStructure);
+                            if (IsInMatch && ModUISettings.CleanupInMatches >= 2) newRagdoll.ClearAfter(ModUISettings.CleanupInMatches);
+                            else if (!IsInMatch) newRagdoll.ClearAfter(ModUISettings.CleanupOutsideMatches);
+                        }
                     }
-                    playerHealths[player.Controller] = player.Data.HealthPoints;
+                    PlayerHealths[player.Controller] = player.Data.HealthPoints;
                 }
             }
         }
@@ -223,6 +243,7 @@ namespace DieHarder
         public override void OnSceneWasLoaded(int buildIndex, string sceneName)
         {
             ActiveImpact?.CancelAnimation();
+            PlayerHealths.Clear();
 
             ModObject_Parent = new GameObject("DieHarder");
             ModObject_Silhouettes = new GameObject("Silhouettes");
@@ -327,7 +348,7 @@ namespace DieHarder
         public void OnPlayerHealthDepleted(PlayerHealth playerHealth)
         {
             if (IsInMatch && HasRoundEnded) return;
-            HasRoundEnded = true;
+            if (IsInMatch) HasRoundEnded = true;
 
             PlayerController damagedPlayer = playerHealth.ParentController;
 

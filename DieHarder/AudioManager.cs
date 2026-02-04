@@ -74,26 +74,4 @@ public static class AudioManager
         MelonCoroutines.Start(PlaySound(clipData));
         return clipData;
     }
-
-    public static void StopPlayback(ClipData clipData)
-    {
-        if (clipData == null)
-        {
-            Debug.Log("Attempted to stop playback on a null clipData.", false, 1);
-            return;
-        }
-
-        if (clipData.WaveOut != null)
-        {
-            clipData.WaveOut.Stop();
-            clipData.WaveOut.Dispose();
-        }
-
-        if (clipData.Reader != null)
-        {
-            clipData.Reader.Dispose();
-        }
-
-        clipData.WaveOut = null;
-    }
 }

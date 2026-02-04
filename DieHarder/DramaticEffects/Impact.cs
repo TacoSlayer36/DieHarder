@@ -19,7 +19,6 @@ namespace DieHarder
         public StructureStorage InvolvedStructure;
         public List<GameObject> StructureSilhouettes = new();
         public GameObject SphereBackground;
-        public AudioSource AudioPlayer;
 
         public PlayerVisualsClone DamagedPlayer;
         public Vector3 DamagePos => InvolvedStructure != null ?
@@ -29,7 +28,7 @@ namespace DieHarder
         object AnimationCoroutine;
         public bool IsAnimationRunning = false;
 
-        private bool fogEnabledStorage = false;
+        public static float FogEndDistanceStorage = RenderSettings.fogDensity;
 
         public static Color GetColorFromSetting(string colorString, bool isPrimary)
         {
@@ -105,8 +104,8 @@ namespace DieHarder
             }
 
             // Disable fog
-            fogEnabledStorage = RenderSettings.fog;
-            RenderSettings.fog = false;
+            FogEndDistanceStorage = RenderSettings.fogEndDistance;
+            RenderSettings.fogEndDistance = 10000f;
 
             // Move each silhouette into place (and turn on their camera)
             PlayerManager.Instance.localPlayer.Controller.GetCamera().enabled = false;
@@ -125,8 +124,7 @@ namespace DieHarder
             CreateSphereBackground();
 
             // Play pre-impact sound
-            CreateAudio();
-            AudioManager.PlaySoundIfFileExists(Core.PreImpactAudioPath);
+            AudioManager.PlaySoundIfFileExists(Core.PreImpactAudioPath, ModUISettings.DramaticEffectsVolume);
 
             // ---- FREEZE ----
             yield return new WaitForSeconds(ModUISettings.ImpactFrameDuration / 1000f);
@@ -187,10 +185,11 @@ namespace DieHarder
 
             if (SphereBackground != null)
                 GameObject.Destroy(SphereBackground);
-            if (AudioPlayer != null && AudioPlayer.gameObject != null)
-                GameObject.Destroy(AudioPlayer?.gameObject);
 
-            RenderSettings.fog = fogEnabledStorage;
+            if (strong)
+            {
+                RenderSettings.fogDensity = FogEndDistanceStorage;
+            }
 
             if (AnimationCoroutine != null) MelonCoroutines.Stop(AnimationCoroutine);
 
@@ -259,19 +258,6 @@ namespace DieHarder
             SphereBackground.layer = Core.Instance.VisualLayer;
             SphereBackground.transform.SetParent(Core.Instance.ModObject_DramaticEffects.transform);
             SphereBackground.transform.localScale = Vector3.one * 200f;
-        }
-
-        public void CreateAudio()
-        {
-            GameObject audioPlayerGO = new GameObject("AudioPlayer");
-            AudioPlayer = audioPlayerGO.AddComponent<AudioSource>();
-            AudioPlayer.spatialBlend = 0f;
-            AudioPlayer.transform.SetParent(Core.Instance.ModObject_DramaticEffects.transform);
-        }
-        public void PlayAudio(AudioClip clip)
-        {
-            AudioPlayer.clip = clip;
-            AudioPlayer.Play();
         }
     }
 
