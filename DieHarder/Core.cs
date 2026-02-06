@@ -144,7 +144,6 @@ namespace DieHarder
         public AudioClip PreImpactAudioClip;
 
         public Dictionary<PlayerController, PlayerVisualsClone> PlayerSilhouettes = new();
-        public Dictionary<PlayerController, Ragdoll> PlayerRagdolls = new();
         public List<Impact> Impacts = new();
 
         private List<PlayerController> playersProcessedThisFrame = new();
@@ -174,8 +173,6 @@ namespace DieHarder
             ShockwaveShader.hideFlags = HideFlags.HideAndDontSave | HideFlags.DontUnloadUnusedAsset;
             GhostShader = Calls.LoadAssetFromStream<Shader>(this, "DieHarder.assets.dieharder", "Ghost");
             GhostShader.hideFlags = HideFlags.HideAndDontSave | HideFlags.DontUnloadUnusedAsset;
-
-            //LIVPlayersInstance = Resources.FindObjectsOfTypeAll<LIVRenderPlayerFeature>().First();
         }
 
         public override void OnUpdate()
@@ -201,12 +198,15 @@ namespace DieHarder
         {
             if (!GlobalInit) return;
 
-            foreach (Ragdoll.RagdollPool pool in Ragdoll.RagdollPools.Values)
+            if (Time.timeSinceLevelLoad > 10f)
             {
-                if (pool == null || pool.parentController == null || pool.parentController.gameObject == null)
+                foreach (Ragdoll.RagdollPool pool in Ragdoll.RagdollPools.Values)
                 {
-                    GameObject.Destroy(pool?.Transform?.gameObject);
-                    Ragdoll.RagdollPools.Remove(pool.parentController);
+                    if (pool == null || pool.parentController == null || pool.parentController.gameObject == null)
+                    {
+                        GameObject.Destroy(pool?.Transform?.gameObject);
+                        Ragdoll.RagdollPools.Remove(pool.parentController);
+                    }
                 }
             }
 
@@ -221,16 +221,19 @@ namespace DieHarder
                 howardDied = false;
             }
 
-            foreach (PlayerVisualsClone pvc in PlayerSilhouettes.Values)
+            if (Time.timeSinceLevelLoad > 10f)
             {
-                if (pvc == null || pvc.ParentController == null || pvc.ParentController.gameObject == null)
+                foreach (PlayerVisualsClone pvc in PlayerSilhouettes.Values)
                 {
-                    try
+                    if (pvc == null || pvc.ParentController == null || pvc.ParentController.gameObject == null)
                     {
-                        GameObject.Destroy(pvc?.gameObject);
+                        try
+                        {
+                            GameObject.Destroy(pvc?.gameObject);
+                        }
+                        catch { }
+                        PlayerSilhouettes.Remove(pvc?.ParentController);
                     }
-                    catch { }
-                    PlayerSilhouettes.Remove(pvc?.ParentController);
                 }
             }
 
@@ -298,7 +301,6 @@ namespace DieHarder
             Ragdoll.LocalHeadClippedMat = null;
             ActiveImpact = null;
             ActiveShockwave = null;
-            PlayerRagdolls.Clear();
 
             if (Calls.Scene.GetSceneName() == "Gym" && !GlobalInit)
             {
