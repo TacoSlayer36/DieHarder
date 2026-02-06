@@ -350,8 +350,6 @@ namespace DieHarder
             {
                 if (Type == VisualsType.Silhouette)
                     Core.Instance.PlayerSilhouettes.Remove(ParentController);
-                else if (Type == VisualsType.Ragdoll)
-                    Core.Instance.PlayerRagdolls.Remove(ParentController);
 
                 GameObject.DestroyImmediate(Visuals);
             }
@@ -490,8 +488,6 @@ namespace DieHarder
             else
                 smr.material.SetFloat("_IsLocal", 0f);
 
-            // I l 1 |
-
             List<Transform> parentBones = ParentController.GetBones()
                 .Select(bone => bone.Transform)
                 .ToList();
@@ -513,16 +509,6 @@ namespace DieHarder
             SkinnedMeshRenderer parentRenderer = ParentController.transform.GetChild(1).GetComponentInChildren<SkinnedMeshRenderer>();
             myRenderer.sharedMesh = parentRenderer.sharedMesh;
             myRenderer.material = ParentController.GetSubsystem<PlayerVisuals>().NonHeadClippedMaterial;
-        }
-
-        public void Remove()
-        {
-            if (Type == VisualsType.Silhouette)
-                Core.Instance.PlayerSilhouettes.Remove(ParentController);
-            else if (Type == VisualsType.Ragdoll)
-                Core.Instance.PlayerRagdolls.Remove(ParentController);
-
-            GameObject.DestroyImmediate(Visuals);
         }
     }
 }
