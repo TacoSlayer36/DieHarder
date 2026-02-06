@@ -1,4 +1,8 @@
-﻿using Il2CppRootMotion;
+﻿using Il2CppPlayFab.MultiplayerModels;
+using Il2CppRootMotion;
+using Il2CppRUMBLE.Combat.ShiftStones;
+using Il2CppRUMBLE.Managers;
+using Il2CppRUMBLE.Physics.Utility;
 using Il2CppRUMBLE.Players;
 using Il2CppRUMBLE.Players.Scaling;
 using Il2CppRUMBLE.Players.Subsystems;
@@ -7,6 +11,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
+using UnityEngine.Playables;
 
 namespace DieHarder
 {
@@ -25,6 +30,8 @@ namespace DieHarder
         public Transform Chest;
 
         public bool IsJanky = false;
+        public bool DoSmashLaunch = false;
+        public Vector3 SmashLaunchDir = Vector3.zero;
 
         public static Ragdoll SpawnRagdoll(PlayerController player, StructureStorage killingStructure = null)
         {
@@ -40,7 +47,7 @@ namespace DieHarder
             }
             else if (!launchFromGutter)
             {
-                newRagdoll.AddVelocity(new Vector3(Random.RandomRange(-15, 15), 35, Random.RandomRange(-15, 15)));
+                newRagdoll.AddVelocity(new Vector3(Random.RandomRange(-15, 15), 25, Random.RandomRange(-15, 15)));
             }
             else
             {
@@ -51,7 +58,7 @@ namespace DieHarder
             if ((Core.Instance.IsInMatch && ModUISettings.RagdollsInMatches >= 3) || (!Core.Instance.IsInMatch && ModUISettings.RagdollsOutsideMatches >= 2))
             {
                 newRagdoll.AddVelocity(newRagdoll.Chest.GetComponentInChildren<Rigidbody>().velocity);
-                newRagdoll.AddVelocity(new Vector3(Random.RandomRange(-15, 15), 35, Random.RandomRange(-15, 15)));
+                newRagdoll.AddVelocity(new Vector3(Random.RandomRange(-15, 15), 25, Random.RandomRange(-15, 15)));
             }
 
             return newRagdoll;
@@ -128,13 +135,57 @@ namespace DieHarder
             Setup(Visuals);
 
             Visuals.transform.SetParent(transform);
-
             Chest = transform.GetChild(0).GetChild(0).GetChild(3);
 
             PlayerMeasurement parentMeasurement = ParentController.assignedPlayer.Data.PlayerMeasurement;
             float height = parentMeasurement.Length;
             float armSpam = parentMeasurement.ArmSpan;
 
+            GrabBoneRefs();
+
+            PlayerVisuals parentPv = ParentController.GetSubsystem<PlayerVisuals>();
+            SkinnedMeshRenderer parentSmr = parentPv.GetComponentInChildren<SkinnedMeshRenderer>();
+            SkinnedMeshRenderer mySmr = Visuals.GetComponentInChildren<SkinnedMeshRenderer>();
+            if (ParentController.ControllerType != Il2CppRUMBLE.Players.ControllerType.Local)
+            {
+                parentPv.NonHeadClippedMaterial = parentSmr.material;
+                mySmr.material = new Material(parentPv.NonHeadClippedMaterial);
+            }
+            else mySmr.material = parentPv.NonHeadClippedMaterial;
+
+            mySmr.gameObject.layer = 0;
+
+            foreach (Rigidbody rb in GetComponentsInChildren<Rigidbody>())
+            {
+                string[] layers = new string[] { "Floor", "CombatFloor", "Environment", "LeanableEnvironment", "PedestalFloor" };
+                rb.includeLayers = new LayerMask().AddToMask(layers);
+                rb.includeLayers = rb.includeLayers | Core.Instance.PhysicsLayerMask;
+                if (!Core.Prefs_LegacyRagdollJank.Value)
+                rb.excludeLayers = LayerMask.GetMask("Move", "PlayerController", "PlayerHitbox", "PlayerPhysicsBone", "PlayerFeet", "PlayerOnPlayerInteraction");
+                rb.gameObject.layer = Core.Instance.PhysicsLayer;
+                rb.ResetCenterOfMass();
+            }
+
+            CacheOriginalJointData();
+            CopyPose();
+
+            if (Core.Prefs_LegacyRagdollJank.Value)
+            {
+                float mult = Random.RandomRange(0.5f, 1.5f);
+                if (Random.RandomRangeInt(0, 2) == 0)
+                    mult *= mult;
+                if (Random.RandomRangeInt(0, 15) == 0)
+                    mult *= mult * mult * mult;
+
+                foreach (BoneRef boneRef in BoneRefs)
+                {
+                    boneRef.RagdollBone.localScale *= mult;
+                }
+            }
+        }
+
+        public void GrabBoneRefs()
+        {
             foreach (BoneDefinition visualBone in Visuals.GetComponent<RigDefinition>().boneDefinitions)
             {
                 foreach (Transform ragdollBone in HelperFunctions.FindChildrenRecursive(transform.GetChild(0)))
@@ -150,44 +201,6 @@ namespace DieHarder
                         BoneRefs.Add(new BoneRef(visualBone.Transform.name, visualBone.Transform, ragdollBone));
                         break;
                     }
-                }
-            }
-
-            PlayerVisuals parentPv = ParentController.GetSubsystem<PlayerVisuals>();
-            SkinnedMeshRenderer parentSmr = parentPv.GetComponentInChildren<SkinnedMeshRenderer>();
-            SkinnedMeshRenderer mySmr = Visuals.GetComponentInChildren<SkinnedMeshRenderer>();
-            if (ParentController.ControllerType != Il2CppRUMBLE.Players.ControllerType.Local)
-            {
-                parentPv.NonHeadClippedMaterial = parentSmr.material;
-                mySmr.material = new Material(parentPv.NonHeadClippedMaterial);
-            }
-            else mySmr.material = parentPv.NonHeadClippedMaterial;
-
-            foreach (Rigidbody rb in GetComponentsInChildren<Rigidbody>())
-            {
-                string[] layers = new string[] { "Floor", "CombatFloor", "Environment", "LeanableEnvironment", "PedestalFloor" };
-                rb.includeLayers = new LayerMask().AddToMask(layers);
-                rb.includeLayers = rb.includeLayers | Core.Instance.PhysicsLayerMask;
-                if (!ModUISettings.LegacyRagdollJank)
-                rb.excludeLayers = LayerMask.GetMask("Move", "PlayerController", "PlayerHitbox", "PlayerPhysicsBone", "PlayerFeet", "PlayerOnPlayerInteraction");
-                rb.gameObject.layer = Core.Instance.PhysicsLayer;
-                rb.ResetCenterOfMass();
-            }
-
-            CacheOriginalJointData();
-            CopyPose();
-
-            if (ModUISettings.LegacyRagdollJank)
-            {
-                float mult = Random.RandomRange(0.5f, 1.5f);
-                if (Random.RandomRangeInt(0, 2) == 0)
-                    mult *= mult;
-                if (Random.RandomRangeInt(0, 15) == 0)
-                    mult *= mult * mult * mult;
-
-                foreach (BoneRef boneRef in BoneRefs)
-                {
-                    boneRef.RagdollBone.localScale *= mult;
                 }
             }
         }
@@ -211,7 +224,7 @@ namespace DieHarder
         {
             Age += Time.deltaTime;
 
-            TrackVisualsToRBBones();
+            TrackVisualsToRbBones();
 
             if (ClearAfterSeconds > 0 && Age >= ClearAfterSeconds)
             {
@@ -222,14 +235,23 @@ namespace DieHarder
                 SetActive(false);
             }
 
-            if (transform.GetChild(0).GetChild(0).position.y < -20f) SetActive(false);
+            if (Chest.position.y < -20f) SetActive(false);
+            if (Chest.position.magnitude > 300f) SetActive(false);
         }
 
-        private void TrackVisualsToRBBones()
+        void FixedUpdate()
+        {
+            if (DoSmashLaunch && SmashLaunchDir.magnitude > 0.1f)
+            {
+                AddVelocity(SmashLaunchDir * 20f);
+            }
+        }
+
+        private void TrackVisualsToRbBones()
         {
             foreach (BoneRef boneRef in BoneRefs)
             {
-                if (!IsJanky || !ModUISettings.LegacyRagdollJank)
+                if (!IsJanky || !Core.Prefs_LegacyRagdollJank.Value)
                 {
                     boneRef.VisualBone.transform.position = boneRef.RagdollBone.transform.position;
                     boneRef.VisualBone.transform.rotation = boneRef.RagdollBone.transform.rotation;
@@ -287,7 +309,7 @@ namespace DieHarder
                 MelonCoroutines.Start(C_SetLayersDelayed());
             }
 
-            TrackVisualsToRBBones();
+            TrackVisualsToRbBones();
             Visuals.SetActive(true);
         }
 
@@ -303,7 +325,7 @@ namespace DieHarder
                 if (joint == null) continue;
 
                 Vector3 newAnchorPos = joint.transform.InverseTransformPoint(boneAnchorPosStorage[joint].transform.position);
-                if (!ModUISettings.LegacyRagdollJank)
+                if (!Core.Prefs_LegacyRagdollJank.Value)
                 {
                     joint.connectedAnchor = originalBoneAnchors[joint] * (ragdollBone.lossyScale.x / 100f);
                 }
@@ -341,13 +363,19 @@ namespace DieHarder
 
         public void SetActive(bool active)
         {
-            if (UndoGhostOnClear)
-                UnGhostifyOwner();
-            foreach (Rigidbody rb in transform.GetChild(0).GetComponentsInChildren<Rigidbody>())
+            if (!active)
             {
-                if (rb == null) continue;
-                rb.velocity = Vector3.zero;
+                if (UndoGhostOnClear)
+                    UnGhostifyOwner();
+                foreach (Rigidbody rb in transform.GetChild(0).GetComponentsInChildren<Rigidbody>())
+                {
+                    if (rb == null) continue;
+                    rb.velocity = Vector3.zero;
+                }
+                IsJanky = false;
+                DoSmashLaunch = false;
             }
+
             gameObject.SetActive(active);
         }
 
@@ -438,7 +466,7 @@ namespace DieHarder
                 poolRagdoll.gameObject.SetActive(true);
                 poolRagdoll.CopyPose();
 
-                if (ModUISettings.LegacyRagdollJank)
+                if (Core.Prefs_LegacyRagdollJank.Value)
                 {
                     poolRagdoll.IsJanky = Random.RandomRangeInt(0, 30) == 0;
                     if (Random.RandomRangeInt(0, 10) == 0)

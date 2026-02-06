@@ -5,11 +5,8 @@ using Il2CppRUMBLE.Players;
 using Il2CppRUMBLE.Players.Subsystems;
 using Il2CppRUMBLE.Pools;
 using MelonLoader;
-using System;
+using System.Collections;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using UnityEngine;
 
 namespace DieHarder
@@ -18,6 +15,8 @@ namespace DieHarder
     public class Shockwave : MonoBehaviour
     {
         public PlayerController DamagedPlayer;
+
+        public bool HowardInvolved = false;
 
         public GameObject ForceField;
         public Renderer ForceFieldRenderer;
@@ -35,6 +34,8 @@ namespace DieHarder
         {
             CreateForceField();
             CreateDust();
+            CreateHitEffect();
+            PlayAudio();
         }
 
         void Update()
@@ -68,6 +69,11 @@ namespace DieHarder
                 if (Timer > 3f) GameObject.Destroy(ForceField);
             }
 
+            if (Timer > 10f)
+            {
+                AudioManager.SilenceAudioAfter(Core.ImpactAudioSource, 0f);
+            }
+
             if (Timer > 11f)
             {
                 GameObject.Destroy(gameObject);
@@ -91,7 +97,7 @@ namespace DieHarder
                         movedRagdolls.Add(ragdoll);
 
                         Vector3 shockwavePosOffset = new Vector3(ForceField.transform.position.x, -1f, ForceField.transform.position.z);
-                        ragdoll.AddVelocity((ragdoll.Chest.position - shockwavePosOffset).normalized * Core.Instance.V_ShockwaveMove);
+                        ragdoll.AddVelocity((ragdoll.Chest.position - shockwavePosOffset).normalized * 40f);
                     }
                 }
             }
@@ -108,7 +114,7 @@ namespace DieHarder
 
         public void CreateDust()
         {
-            if (DamagedPlayer.GetSubsystem<PlayerMovement>().WasGrounded)
+            if (!HowardInvolved && DamagedPlayer.GetSubsystem<PlayerMovement>().WasGrounded)
             {
                 Structure randomCube = PoolManager.Instance.resourcesToPool[55].Resource.GetComponent<Structure>();
 
@@ -117,6 +123,40 @@ namespace DieHarder
                 Dusts.Add(pooledVisualEffect.gameObject);
                 pooledVisualEffect.transform.localScale = Vector3.one * 1.7f;
             }
+        }
+
+        public void CreateHitEffect()
+        {
+            Vector3 pos;
+            bool howardDied = false;
+            if (HowardInvolved && Core.Instance.Howard != null && Core.Instance.Howard.currentHp == 0) howardDied = true;
+
+            if (!HowardInvolved || (HowardInvolved && !howardDied)) pos = DamagedPlayer.GetChest().position;
+            else
+            {
+                if (Core.Instance.Howard != null) pos = Core.Instance.HowardSmr.transform.position;
+                else pos = DamagedPlayer.GetChest().position;
+            }
+
+            GameObject hitMarker = PoolManager.instance.availablePools[32].FetchFromPool(pos, Quaternion.identity).gameObject;
+            PlayerHitmarker phm = hitMarker?.gameObject?.GetComponent<PlayerHitmarker>();
+            if (phm != null)
+            {
+                phm.SetDamage(7f);
+                MelonCoroutines.Start(C_EnlargeVFX(phm));
+            }
+        }
+
+        static IEnumerator C_EnlargeVFX(PlayerHitmarker phm)
+        {
+            yield return new WaitForSeconds(0.1f);
+            phm.SetDamage(15f);
+        }
+
+        public void PlayAudio()
+        {
+            Core.ImpactAudioSource.volume = ModUISettings.DramaticEffectsVolume;
+            Core.ImpactAudioSource.Play();
         }
     }
 }

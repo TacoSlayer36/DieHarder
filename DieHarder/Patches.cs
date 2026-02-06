@@ -1,6 +1,8 @@
 ﻿using HarmonyLib;
 using Il2CppPlayFab.ClientModels;
 using Il2CppRUMBLE.CharacterCreation.Interactable;
+using Il2CppRUMBLE.Combat.ShiftStones;
+using Il2CppRUMBLE.Integrations.LIV;
 using Il2CppRUMBLE.Managers;
 using Il2CppRUMBLE.MoveSystem;
 using Il2CppRUMBLE.Networking.MatchFlow;
@@ -83,7 +85,7 @@ namespace DieHarder
         private static void Postfix()
         {
             Core.Instance.HasRoundEnded = false;
-            if (ModUISettings.CleanupInMatches == 2)
+            if (ModUISettings.CleanupInMatches > 0)
                 Ragdoll.ClearAllRagdolls();
             foreach (Player player in PlayerManager.Instance.AllPlayers)
             {
@@ -153,6 +155,39 @@ namespace DieHarder
                     Ragdoll.Explode(explodedStructure);
                 }
             }
+        }
+    }
+
+    [HarmonyPatch(typeof(PlayerShiftstoneSystem), nameof(PlayerShiftstoneSystem.AttachShiftStone), new Type[] { typeof(ShiftStone), typeof(int), typeof(bool), typeof(bool) })]
+    public static class PlayerShifstoneSystem_AttachShiftStone_Patch
+    {
+        private static void Postfix(ref PlayerShiftstoneSystem __instance)
+        {
+            if (Core.Instance.PlayerSilhouettes.TryGetValue(__instance.parentController, out PlayerVisualsClone playerVisualsClone))
+            {
+                playerVisualsClone.UpdateShiftStones();
+            }
+        }
+    }
+
+    [HarmonyPatch(typeof(PlayerShiftstoneSystem), nameof(PlayerShiftstoneSystem.RemoveShiftStone), new Type[] { typeof(int), typeof(bool), typeof(bool) })]
+    public static class PlayerShifstoneSystem_RemoveShiftStone_Patch
+    {
+        private static void Postfix(ref PlayerShiftstoneSystem __instance)
+        {
+            if (Core.Instance.PlayerSilhouettes.TryGetValue(__instance.parentController, out PlayerVisualsClone playerVisualsClone))
+            {
+                playerVisualsClone.UpdateShiftStones();
+            }
+        }
+    }
+
+    [HarmonyPatch(typeof(LIVRenderPlayerFeature), MethodType.Constructor, new Type[] { typeof(IntPtr) })]
+    public static class LIVRenderPlayerFeature_Constructor_Patch
+    {
+        private static void Postfix(ref LIVRenderPlayerFeature __instance)
+        {
+            Core.Instance.LIVPlayersInstance = __instance;
         }
     }
 

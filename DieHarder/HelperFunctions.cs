@@ -1,6 +1,4 @@
 ﻿using MelonLoader;
-using NAudio.Wave.SampleProviders;
-using NAudio.Wave;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
