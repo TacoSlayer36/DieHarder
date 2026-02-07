@@ -26,7 +26,7 @@ namespace DieHarder
         private Dictionary<Joint, Vector3> originalBoneAnchors = new();
         public float Age = 0f;
         public float ClearAfterSeconds = 0f;
-        public bool UndoGhostOnClear = false;
+        public bool UndoGhostOnClear = true;
         public Transform Chest;
 
         public bool IsJanky = false;
@@ -154,7 +154,8 @@ namespace DieHarder
             SkinnedMeshRenderer mySmr = Visuals.GetComponentInChildren<SkinnedMeshRenderer>();
             if (ParentController.ControllerType != Il2CppRUMBLE.Players.ControllerType.Local)
             {
-                parentPv.NonHeadClippedMaterial = parentSmr.material;
+                if (parentPv.NonHeadClippedMaterial == null)
+                    parentPv.NonHeadClippedMaterial = parentSmr.material;
                 mySmr.material = new Material(parentPv.NonHeadClippedMaterial);
             }
             else mySmr.material = parentPv.NonHeadClippedMaterial;

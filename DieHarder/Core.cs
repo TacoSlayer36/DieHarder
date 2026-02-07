@@ -28,7 +28,7 @@ namespace DieHarder
     {
         public const string Name = "DieHarder";
         public const string Author = "TacoSlayer36";
-        public const string Version = "2.0.1";
+        public const string Version = "2.0.2";
         public const string Description = "That death goes hard";
     }
 
