@@ -96,8 +96,11 @@ namespace DieHarder
                     {
                         movedRagdolls.Add(ragdoll);
 
-                        Vector3 shockwavePosOffset = new Vector3(ForceField.transform.position.x, -1f, ForceField.transform.position.z);
-                        ragdoll.AddVelocity((ragdoll.Chest.position - shockwavePosOffset).normalized * 40f);
+                        if (ragdoll.Chest.GetComponent<Rigidbody>().velocity.magnitude < 0.3f)
+                        {
+                            Vector3 shockwavePosOffset = new Vector3(ForceField.transform.position.x, -1f, ForceField.transform.position.z);
+                            ragdoll.AddVelocity((ragdoll.Chest.position - shockwavePosOffset).normalized * 40f);
+                        }
                     }
                 }
             }

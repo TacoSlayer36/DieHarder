@@ -242,8 +242,6 @@ namespace DieHarder
 
             playersProcessedThisFrame.Clear();
 
-            if (HasRoundEnded) return;
-
             // Ragdoll on damage
             if ((IsInMatch && ModUISettings.RagdollsInMatches >= 3) || (!IsInMatch && ModUISettings.RagdollsOutsideMatches >= 2))
             {
@@ -254,7 +252,7 @@ namespace DieHarder
                     int storedHealth = 0;
                     if (PlayerHealths.ContainsKey(player.Controller)) storedHealth = PlayerHealths[player.Controller];
 
-                    if (player.Controller.GetSubsystem<Il2CppRUMBLE.Players.Subsystems.PlayerHealth>().IsRegeneratingHealth) continue;
+                    if (player.Controller.GetSubsystem<PlayerHealth>().IsRegeneratingHealth) continue;
 
                     int damageAmount = storedHealth - player.Data.HealthPoints;
 
@@ -436,11 +434,18 @@ namespace DieHarder
             PlayerHealth playerHealth = player.GetSubsystem<PlayerHealth>();
             playerHealth.OnHealthDepleted.AddListener((UnityAction)(() => OnPlayerHealthDepleted(playerHealth)));
 
-            if (Ragdoll.LocalHeadClippedMat == null)
+            try
             {
-                SkinnedMeshRenderer smr = PlayerManager.instance.localPlayer.Controller.GetSubsystem<PlayerVisuals>().GetComponentInChildren<SkinnedMeshRenderer>();
-                Ragdoll.LocalHeadClippedMat = smr.material;
-                Ragdoll.LocalHeadClippedMat.hideFlags = HideFlags.HideAndDontSave | HideFlags.DontUnloadUnusedAsset;
+                if (Ragdoll.LocalHeadClippedMat == null)
+                {
+                    SkinnedMeshRenderer smr = PlayerManager.instance.localPlayer.Controller.GetSubsystem<PlayerVisuals>().GetComponentInChildren<SkinnedMeshRenderer>();
+                    Ragdoll.LocalHeadClippedMat = smr.material;
+                    Ragdoll.LocalHeadClippedMat.hideFlags = HideFlags.HideAndDontSave | HideFlags.DontUnloadUnusedAsset;
+                }
+            }
+            catch
+            {
+                Debug.Log("Could not create silhouette for player " + HelperFunctions.SanitizeString(player.assignedPlayer.Data.GeneralData.PublicUsername), false, 2);
             }
 
             CreateSilhouetteFromPlayer(player);
