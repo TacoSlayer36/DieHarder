@@ -1,11 +1,11 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
-  <PropertyGroup>
-    <TargetFramework>net6.0</TargetFramework>
-  </PropertyGroup>
+	<PropertyGroup>
+		<TargetFramework>net6.0</TargetFramework>
+	</PropertyGroup>
 
 	<ItemGroup>
-		<Reference Include="G:\SteamLibrary\steamapps\common\RUMBLE\MelonLoader\**\*.dll" Private="false" />
+		<Reference Include="C:\Program Files (x86)\Steam\steamapps\common\RUMBLE\MelonLoader\**\*.dll" Private="false" />
 		<None Remove="assets\AssetBundles - Shortcut.lnk" />
 		<None Remove="assets\dieharder" />
 		<EmbeddedResource Include="assets\dieharder" />
@@ -14,35 +14,15 @@
 			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
 		</PackageReference>
 		<Reference Include="ModUI">
-			<HintPath>G:\SteamLibrary\steamapps\common\RUMBLE\Mods\ModUI.dll</HintPath>
-		</Reference>
-		<Reference Include="NAudio">
-		  <HintPath>G:\SteamLibrary\steamapps\common\RUMBLE\UserLibs\NAudio.dll</HintPath>
-		  <EmbedInteropTypes>False</EmbedInteropTypes>
-		</Reference>
-		<Reference Include="NAudio.Core">
-		  <HintPath>G:\SteamLibrary\steamapps\common\RUMBLE\UserLibs\NAudio.Core.dll</HintPath>
-		  <EmbedInteropTypes>False</EmbedInteropTypes>
-		</Reference>
-		<Reference Include="NAudio.Wasapi">
-		  <HintPath>G:\SteamLibrary\steamapps\common\RUMBLE\UserLibs\NAudio.Wasapi.dll</HintPath>
-		  <EmbedInteropTypes>False</EmbedInteropTypes>
-		</Reference>
-		<Reference Include="NAudio.WinForms">
-		  <HintPath>G:\SteamLibrary\steamapps\common\RUMBLE\UserLibs\NAudio.WinForms.dll</HintPath>
-		  <EmbedInteropTypes>False</EmbedInteropTypes>
-		</Reference>
-		<Reference Include="NAudio.WinMM">
-		  <HintPath>G:\SteamLibrary\steamapps\common\RUMBLE\UserLibs\NAudio.WinMM.dll</HintPath>
-		  <EmbedInteropTypes>False</EmbedInteropTypes>
+			<HintPath>C:\Program Files (x86)\Steam\steamapps\common\RUMBLE\Mods\ModUI.dll</HintPath>
 		</Reference>
 		<Reference Include="RumbleModdingAPI">
-			<HintPath>G:\SteamLibrary\steamapps\common\RUMBLE\Mods\RumbleModdingAPI.dll</HintPath>
+			<HintPath>C:\Program Files (x86)\Steam\steamapps\common\RUMBLE\Mods\RumbleModdingAPI.dll</HintPath>
 		</Reference>
 	</ItemGroup>
 
-  <Target Name="PostBuild" AfterTargets="PostBuildEvent">
-    <Exec Command="copy &quot;$(TargetPath)&quot; &quot;G:\SteamLibrary\steamapps\common\RUMBLE\Mods\$(TargetFileName)&quot;" />
-  </Target>
+	<Target Name="PostBuild" AfterTargets="PostBuildEvent">
+		<Exec Command="copy &quot;$(TargetPath)&quot; &quot;C:\Program Files (x86)\Steam\steamapps\common\RUMBLE\Mods\$(TargetFileName)&quot;" />
+	</Target>
 
 </Project>
