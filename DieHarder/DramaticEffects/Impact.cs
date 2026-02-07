@@ -365,8 +365,8 @@ namespace DieHarder
             ShiftStones[1] = chest?.GetChild(2)?.gameObject?.GetComponentInChildren<ShiftStone>();
             if (Type == VisualsType.Silhouette)
             {
-                ShiftStones[0].transform.SetParent(Visuals.transform);
-                ShiftStones[1].transform.SetParent(Visuals.transform);
+                ShiftStones[0]?.transform?.SetParent(Visuals.transform);
+                ShiftStones[1]?.transform?.SetParent(Visuals.transform);
             }
 
             foreach (var m in Visuals.GetComponentsInChildren<Renderer>())

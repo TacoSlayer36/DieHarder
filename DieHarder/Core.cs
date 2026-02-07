@@ -1,12 +1,4 @@
-﻿/* -- TODO --
- * Extra screen shake
- * Smash Bros exit
- * 
- * Replay Mod compatibility
- * Eyes should sometimes look at you
-*/
-
-using RumbleModdingAPI;
+﻿using RumbleModdingAPI;
 using RumbleModUI;
 
 using MelonLoader;
@@ -22,8 +14,6 @@ using Il2CppRUMBLE.Managers;
 using Il2CppRUMBLE.Interactions.InteractionBase;
 using Il2CppRUMBLE.Networking.MatchFlow;
 using Il2CppRUMBLE.Environment.Howard;
-using UnityEngine.Playables;
-using Il2CppRUMBLE.Integrations.LIV;
 using Il2CppRUMBLE.Recording.LCK;
 using UnityEngine.Rendering.Universal;
 
@@ -38,7 +28,7 @@ namespace DieHarder
     {
         public const string Name = "DieHarder";
         public const string Author = "TacoSlayer36";
-        public const string Version = "2.0.0";
+        public const string Version = "2.0.1";
         public const string Description = "That death goes hard";
     }
 
@@ -275,6 +265,11 @@ namespace DieHarder
             }
         }
 
+        public override void OnSceneWasUnloaded(int buildIndex, string sceneName)
+        {
+            Impact.FogEndDistanceStorage = -1f;
+        }
+
         public override void OnSceneWasLoaded(int buildIndex, string sceneName)
         {
             if (sceneName == "Loader") return;
@@ -282,8 +277,6 @@ namespace DieHarder
             ActiveImpact?.CancelAnimation();
             PlayerHealths.Clear();
             PlayerSilhouettes.Clear();
-
-            Impact.FogEndDistanceStorage = -1f;
 
             ModObject_Parent = new GameObject("DieHarder");
             ModObject_Silhouettes = new GameObject("Silhouettes");
