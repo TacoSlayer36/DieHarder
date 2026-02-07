@@ -28,7 +28,7 @@ namespace DieHarder
     {
         public const string Name = "DieHarder";
         public const string Author = "TacoSlayer36";
-        public const string Version = "2.0.2";
+        public const string Version = "2.0.3";
         public const string Description = "That death goes hard";
     }
 
@@ -48,6 +48,12 @@ namespace DieHarder
         public static MelonPreferences_Entry<bool> Prefs_SmashBrosLaunch;
         public static AudioSource PreImpactAudioSource;
         public static AudioSource ImpactAudioSource;
+
+        bool warnedAboutImpactFile = false;
+        bool warnedAboutPreImpactFile = false;
+
+        public Dictionary<PlayerController, List<Material>> PlayerMatStorage = new();
+        public static List<string> ExcusedRenderers = new List<string>{ "RemoteUI", "LocalUI", "VC Icons", "UI", "Replay Recording Icon" };
 
         public bool DebugEnabled => Prefs_DebugEnabled.Value;
 
@@ -299,9 +305,19 @@ namespace DieHarder
             }
 
             PreImpactAudioClip = AudioManager.LoadWavFile(PreImpactAudioPath);
+            if (PreImpactAudioClip == null && !warnedAboutPreImpactFile)
+            {
+                Debug.Log("Did not find pre-impact.mp3", false, 1);
+                warnedAboutPreImpactFile = true;
+            }
             PreImpactAudioSource.clip = PreImpactAudioClip;
 
             ImpactAudioClip = AudioManager.LoadWavFile(ImpactAudioPath);
+            if (ImpactAudioClip == null && !warnedAboutImpactFile)
+            {
+                Debug.Log("Did not find impact.mp3", false, 1);
+                warnedAboutImpactFile = true;
+            }
             ImpactAudioSource.clip = ImpactAudioClip;
         }
 

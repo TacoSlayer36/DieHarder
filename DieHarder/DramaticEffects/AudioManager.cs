@@ -8,6 +8,8 @@ public static class AudioManager
 {
     public static AudioClip LoadWavFile(string filePath)
     {
+        if (!File.Exists(filePath)) return null;
+
         byte[] fileBytes = File.ReadAllBytes(filePath);
         return LoadWavFromBytes(fileBytes, Path.GetFileNameWithoutExtension(filePath));
     }
@@ -36,7 +38,6 @@ public static class AudioManager
 
         if (dataOffset == -1)
         {
-            MelonLoader.MelonLogger.Error("Could not find data chunk in WAV file");
             return null;
         }
 

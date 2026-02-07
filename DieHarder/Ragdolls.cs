@@ -394,9 +394,23 @@ namespace DieHarder
                 LocalHeadClippedMat = smr.material;
                 LocalHeadClippedMat.hideFlags = HideFlags.HideAndDontSave | HideFlags.DontUnloadUnusedAsset;
             }
-            smr.material = Core.Instance.GhostMat;
-            float isLocal = player.ControllerType == Il2CppRUMBLE.Players.ControllerType.Local ? 1f : 0f;
-            smr.material.SetFloat("_IsLocal", isLocal);
+
+            List<Renderer> allRenderers = player.GetComponentsInChildren<Renderer>().ToList();
+            List<Renderer> usedRenderers = new();
+            foreach (Renderer renderer in allRenderers)
+                if (!Core.ExcusedRenderers.Contains(renderer.name) && !Core.ExcusedRenderers.Contains(renderer.transform.parent.name) && !Core.ExcusedRenderers.Contains(renderer.transform.parent.parent.name))
+                    usedRenderers.Add(renderer);
+            List<Material> materials = new();
+            foreach (Renderer renderer in usedRenderers)
+            {
+                Material newMat = renderer.material;
+                newMat.hideFlags = HideFlags.HideAndDontSave | HideFlags.DontUnloadUnusedAsset;
+                materials.Add(newMat);
+                renderer.material = Core.Instance.GhostMat;
+                float isLocal = player.ControllerType == Il2CppRUMBLE.Players.ControllerType.Local ? 1f : 0f;
+                renderer.material.SetFloat("_IsLocal", isLocal);
+            }
+            Core.Instance.PlayerMatStorage[player] = materials;
         }
 
         public void GhostifyOwner()
@@ -410,10 +424,19 @@ namespace DieHarder
             SkinnedMeshRenderer smr = pv.GetComponentInChildren<SkinnedMeshRenderer>();
             if (player.ControllerType == Il2CppRUMBLE.Players.ControllerType.Local)
                 smr.material = LocalHeadClippedMat;
-            else
+
+            List<Renderer> allRenderers = player.GetComponentsInChildren<Renderer>().ToList();
+            List<Renderer> usedRenderers = new();
+            foreach (Renderer renderer in allRenderers)
+                if (!Core.ExcusedRenderers.Contains(renderer.name) && !Core.ExcusedRenderers.Contains(renderer.transform.parent.name) && !Core.ExcusedRenderers.Contains(renderer.transform.parent.parent.name))
+                    usedRenderers.Add(renderer);
+            List<Material> storedMats = Core.Instance.PlayerMatStorage[player];
+            for (int i = 0; i < storedMats.Count; i++)
             {
-                if (pv.NonHeadClippedMaterial == null) return;
-                smr.material = pv.NonHeadClippedMaterial;
+                if (usedRenderers.Count > i)
+                {
+                    usedRenderers[i].material = storedMats[i];
+                }
             }
         }
 

@@ -369,6 +369,15 @@ namespace DieHarder
                 ShiftStones[1]?.transform?.SetParent(Visuals.transform);
             }
 
+            foreach (Rigidbody rb in Visuals.GetComponentsInChildren<Rigidbody>())
+                GameObject.Destroy(rb);
+
+            foreach (Joint joint in Visuals.GetComponentsInChildren<Joint>())
+                GameObject.Destroy(joint);
+
+            foreach (Collider c in Visuals.GetComponentsInChildren<Collider>())
+                GameObject.Destroy(c);
+
             foreach (var m in Visuals.GetComponentsInChildren<Renderer>())
             {
                 if (m.name == "FadeScreenRenderer")
@@ -382,7 +391,9 @@ namespace DieHarder
                         m.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
                         m.sharedMaterial = Core.Instance.PrimarySilhouetteMat;
                         m.gameObject.layer = Core.Instance.VisualLayer;
-                        if (ParentController.ControllerType == Il2CppRUMBLE.Players.ControllerType.Local) m.material.SetFloat("_IsLocal", 1);
+
+                        float isLocal = ParentController.ControllerType == Il2CppRUMBLE.Players.ControllerType.Local ? 1f : 0f;
+                        m.sharedMaterial.SetFloat("_IsLocal", isLocal);
                     }
                 }
             }
@@ -483,10 +494,11 @@ namespace DieHarder
             }
             catch { }
 
-            if (ParentController.controllerType == Il2CppRUMBLE.Players.ControllerType.Local && !rockCamBeingUsed)
-                smr.material.SetFloat("_IsLocal", 1f);
-            else
-                smr.material.SetFloat("_IsLocal", 0f);
+            float isLocal = ParentController.controllerType == Il2CppRUMBLE.Players.ControllerType.Local && !rockCamBeingUsed ? 1f : 0f;
+            foreach (Renderer renderer in Visuals.GetComponentsInChildren<Renderer>())
+            {
+                renderer.material.SetFloat("_IsLocal", isLocal);
+            }
 
             List<Transform> parentBones = ParentController.GetBones()
                 .Select(bone => bone.Transform)
