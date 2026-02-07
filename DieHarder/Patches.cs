@@ -25,20 +25,10 @@ namespace DieHarder
     [HarmonyPatch(typeof(PlayerVisuals), nameof(PlayerVisuals.ApplyPlayerVisuals), new Type[] { typeof(Il2CppRUMBLE.MeshGeneration.PlayerCharacterBaker.GeneratedPlayerVisuals) })]
     public static class PlayerVisuals_ApplyPlayerVisuals_Patch
     {
-        private static void Prefix(ref PlayerVisuals __instance)
-        {
-            if (Time.timeSinceLevelLoad < 1f)
-            {
-                MelonCoroutines.Start(C_Delay(1f - Time.timeSinceLevelLoad, __instance.parentController));
-            }
-            else
-            {
-                Core.Instance.ProcessNewPlayer(__instance.parentController);
-            }
-        }
-
         private static void Postfix(ref PlayerVisuals __instance)
         {
+            MelonCoroutines.Start(C_Delay(3f, __instance.parentController));
+
             if (__instance.parentController.controllerType == Il2CppRUMBLE.Players.ControllerType.Local)
             Ragdoll.LocalHeadClippedMat = __instance.parentController.GetSubsystem<PlayerVisuals>().GetComponentInChildren<SkinnedMeshRenderer>().material;
         }

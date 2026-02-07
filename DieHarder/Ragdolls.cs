@@ -52,7 +52,7 @@ namespace DieHarder
             else
             {
                 Vector3 launchLateral = new Vector3(newRagdoll.Chest.position.x, 0f, newRagdoll.Chest.position.z).normalized * -45f;
-                newRagdoll.AddVelocity(launchLateral + Vector3.up * 110f);
+                newRagdoll.AddVelocity(launchLateral + Vector3.up * 95f);
             }
 
             if ((Core.Instance.IsInMatch && ModUISettings.RagdollsInMatches >= 3) || (!Core.Instance.IsInMatch && ModUISettings.RagdollsOutsideMatches >= 2))
@@ -66,8 +66,14 @@ namespace DieHarder
 
         public static RagdollPool FindOrCreateRagdollPool(PlayerController player)
         {
+            if (player?.GetSubsystem<PlayerVisuals>()?.GetComponentInChildren<SkinnedMeshRenderer>() == null)
+            {
+                Debug.Log("Could not create silhouette for player " + HelperFunctions.SanitizeString(player.assignedPlayer.Data.GeneralData.PublicUsername), false, 2);
+                return null;
+            }
+
             if (RagdollPools.ContainsKey(player)) return RagdollPools[player];
-            
+
             string sanitizedName = HelperFunctions.SanitizeString(player.assignedPlayer.Data.GeneralData.PublicUsername + "RagdollPool");
             GameObject newGo = new GameObject(sanitizedName);
             newGo.transform.SetParent(Core.Instance.ModObject_Ragdolls.transform, true);
