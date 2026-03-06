@@ -49,9 +49,9 @@ namespace DieHarder
                     forceFieldScale += Time.deltaTime * 150f;
                     forceFieldProximityDistance += Time.deltaTime;
                 }
-                else
+                else if (Timer <= 0.9f)
                 {
-                    forceFieldScale += Time.deltaTime * 2000f;
+                    forceFieldScale += Time.deltaTime * 7000f;
                     forceFieldProximityDistance += Time.deltaTime * 5;
                 }
 
@@ -117,14 +117,15 @@ namespace DieHarder
 
         public void CreateDust()
         {
-            if (!HowardInvolved && DamagedPlayer.GetSubsystem<PlayerMovement>().WasGrounded)
+            if (!HowardInvolved && DamagedPlayer.PlayerMovement.WasGrounded)
             {
-                Structure randomCube = PoolManager.Instance.resourcesToPool[55].Resource.GetComponent<Structure>();
+                Structure randomCube = PoolManager.Instance.resourcesToPool[68].Resource.GetComponent<Structure>();
 
-                PooledVisualEffect pooledVisualEffect = PoolManager.instance.availablePools[50].FetchFromPool(DamagedPlayer.GetStandingPosition(), Quaternion.identity).gameObject.GetComponent<PooledVisualEffect>();
-                pooledVisualEffect.SetStructureData(randomCube);
+                PooledVisualEffect pooledVisualEffect = PoolManager.instance.availablePools[63].FetchFromPool(DamagedPlayer.GetStandingPosition(), Quaternion.identity).gameObject.GetComponent<PooledVisualEffect>();
+                pooledVisualEffect.parameterCollection.Apply(pooledVisualEffect.visualEffect, randomCube);
+
                 Dusts.Add(pooledVisualEffect.gameObject);
-                pooledVisualEffect.transform.localScale = Vector3.one * 1.7f;
+                pooledVisualEffect.transform.localScale = Vector3.one * 2.5f;
             }
         }
 
@@ -137,11 +138,11 @@ namespace DieHarder
             if (!HowardInvolved || (HowardInvolved && !howardDied)) pos = DamagedPlayer.GetChest().position;
             else
             {
-                if (Core.Instance.Howard != null) pos = Core.Instance.HowardSmr.transform.position;
+                if (Core.Instance.HowardSmr) pos = Core.Instance.HowardSmr.transform.position;
                 else pos = DamagedPlayer.GetChest().position;
             }
 
-            GameObject hitMarker = PoolManager.instance.availablePools[32].FetchFromPool(pos, Quaternion.identity).gameObject;
+            GameObject hitMarker = PoolManager.instance.availablePools[46].FetchFromPool(pos, Quaternion.identity).gameObject;
             PlayerHitmarker phm = hitMarker?.gameObject?.GetComponent<PlayerHitmarker>();
             if (phm != null)
             {

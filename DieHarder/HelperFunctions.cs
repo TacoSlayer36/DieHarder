@@ -48,5 +48,13 @@ namespace DieHarder
             string pattern = @"<[^>]*>";
             return Regex.Replace(Input, pattern, string.Empty);
         }
+
+        public static Vector3 GetRelativeVelocity(Vector3 velocityA, Collision collision) // Collision.relativeVelocity is stripped
+        {
+            Rigidbody rbB = collision.rigidbody;
+            Vector3 velocityB = rbB != null ? rbB.velocity : Vector3.zero;
+
+            return velocityA - velocityB;
+        }
     }
 }

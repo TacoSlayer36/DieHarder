@@ -2,7 +2,6 @@
 using Il2CppPlayFab.ClientModels;
 using Il2CppRUMBLE.CharacterCreation.Interactable;
 using Il2CppRUMBLE.Combat.ShiftStones;
-using Il2CppRUMBLE.Integrations.LIV;
 using Il2CppRUMBLE.Managers;
 using Il2CppRUMBLE.MoveSystem;
 using Il2CppRUMBLE.Networking.MatchFlow;
@@ -27,16 +26,13 @@ namespace DieHarder
     {
         private static void Postfix(ref PlayerVisuals __instance)
         {
-            MelonCoroutines.Start(C_Delay(3f, __instance.parentController));
+            MelonCoroutines.Start(_(__instance.parentController));
 
-            if (__instance.parentController.controllerType == Il2CppRUMBLE.Players.ControllerType.Local)
-            Ragdoll.LocalHeadClippedMat = __instance.parentController.GetSubsystem<PlayerVisuals>().GetComponentInChildren<SkinnedMeshRenderer>().material;
-        }
-
-        static IEnumerator C_Delay(float waitTime, PlayerController player)
-        {
-            yield return new WaitForSeconds(waitTime);
-            Core.Instance.ProcessNewPlayer(player);
+            static IEnumerator _(PlayerController player)
+            {
+                yield return new WaitForSeconds(3f);
+                Core.Instance.ProcessNewPlayer(player);
+            }
         }
     }
 
@@ -106,13 +102,25 @@ namespace DieHarder
     {
         private static bool Prefix(ref Structure __instance, ref Vector3 killVelocity, ref bool playSFX, ref bool playVFX, ref bool networked)
         {
-            bool isAnimationRunning = Core.Instance.ActiveImpact != null && Core.Instance.ActiveImpact.IsAnimationRunning;
-            if (isAnimationRunning && Core.Instance.IsInMatch && Core.Instance.HasRoundEnded)
+            try
             {
-                Core.Instance.StructureKillStorages.Add(new StructureKillStorage(__instance, killVelocity, playSFX, playVFX, networked));
-                return false;
+                bool isAnimationRunning = Core.Instance.ActiveImpact != null && Core.Instance.ActiveImpact.IsAnimationRunning;
+                if (isAnimationRunning && Core.Instance.IsInMatch && Core.Instance.HasRoundEnded)
+                {
+                    Core.Instance.StructureKillStorages.Add(new StructureKillStorage(__instance, killVelocity, playSFX, playVFX, networked));
+                    Rigidbody rb = __instance.GetComponentInChildren<Rigidbody>();
+                    rb.velocity = Vector3.zero;
+                    rb.angularVelocity = Vector3.zero;
+                    foreach (Collider c in __instance.GetComponentsInChildren<Collider>())
+                        c.enabled = false;
+                    return false;
+                }
+                return true;
             }
-            else return true;
+            catch
+            {
+                return true;
+            }
         }
     }
 
@@ -172,21 +180,21 @@ namespace DieHarder
         }
     }
 
-    [HarmonyPatch(typeof(LIVRenderPlayerFeature), MethodType.Constructor, new Type[] { typeof(IntPtr) })]
-    public static class LIVRenderPlayerFeature_Constructor_Patch
-    {
-        private static void Postfix(ref LIVRenderPlayerFeature __instance)
-        {
-            Core.Instance.LIVPlayersInstance = __instance;
-        }
-    }
+    //[HarmonyPatch(typeof(LIVRenderPlayerFeature), MethodType.Constructor, new Type[] { typeof(IntPtr) })]
+    //public static class LIVRenderPlayerFeature_Constructor_Patch
+    //{
+    //    private static void Postfix(ref LIVRenderPlayerFeature __instance)
+    //    {
+    //        Core.Instance.LIVPlayersInstance = __instance;
+    //    }
+    //}
 
     public static class Extensions
     {
         public static Transform GetChest(this PlayerController player) => player.GetComponentInChildren<RigDefinition>().ChestDefinition.Transform;
-        public static Vector3 GetStandingPosition(this PlayerController player) => player.GetSubsystem<PlayerPhysics>().footCollider.transform.position;
-        public static Camera GetCamera(this PlayerController player) => player.GetSubsystem<PlayerCamera>().Camera;
+        public static Vector3 GetStandingPosition(this PlayerController player) => player.PlayerPhysics.footCollider.transform.position;
+        public static Camera GetCamera(this PlayerController player) => player?.PlayerCamera?.Camera;
         public static List<BoneDefinition> GetBones(this PlayerController player) => player.GetComponentInChildren<RigDefinition>().BoneDefinitions.ToList();
-        public static bool IsFirstPerson(this Camera camera) => Vector3.Distance(camera.transform.position, PlayerManager.Instance.LocalPlayer.Controller.GetCamera().transform.position) <= 0.3f;
+        public static bool IsFirstPerson(this Camera camera) => PlayerManager.Instance?.LocalPlayer?.Controller?.GetCamera()?.transform == null ? true : Vector3.Distance(camera.transform.position, PlayerManager.Instance.LocalPlayer.Controller.GetCamera().transform.position) <= 0.3f;
     }
 }

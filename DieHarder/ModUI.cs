@@ -25,12 +25,13 @@ namespace DieHarder
             Mod.AddToList("Include Structure In Impact", true, 0, "Include the structure that delivered the killing blow in the impact frame", new Tags());
             Mod.AddToList("Dramatic Effects Volume", 1f, "Volume of the sounds for the dramatic effects\n0-1; default is 1", new Tags());
             Mod.AddToList("Dramatic Effects Screen Shake", 1, "When to shake the screen during dramatic effects\n0: Never\n1: Take comfort settings into account\n2: Always fully", new Tags());
-            Mod.AddToList("Primary Effect Color", "#000000", "The color of the player/structure silhouettes during dramatic effects\nUse \"Match\" to base it on winning/losing matches and rounds", new Tags());
+            Mod.AddToList("Primary Effect Color", "#000000", "The color of the player/structure silhouettes during the impact frame\nUse \"Match\" to base it on winning/losing matches and rounds\nUse \"None\" to prevent silhouette-ing", new Tags());
             Mod.AddToList("Secondary Effect Color", "Match", "The color of the background during dramatic effects\nUse \"Match\" to base it on winning/losing matches and rounds", new Tags());
             Mod.AddToList("Ragdolls In Matches", 2, "0: Disabled\n1: On match end\n2: On round end\n<#F80>3: On hit (prone to lag)\n<#F00>4: Per damage (God help you)", new Tags());
             Mod.AddToList("Ragdolls Outside Matches", 1, "0: Disabled\n1: On death\n<#F80>2: On hit (prone to lag)\n<#F00>3: Per damage (God help you)", new Tags());
             Mod.AddToList("Cleanup In Matches", 1, "When to remove ragdolls in matches\n0: Between matches\n1: Between rounds\n2 and above: Seconds until vanishing", new Tags());
             Mod.AddToList("Cleanup Outside Matches", 7, "When to remove ragdolls outside matches\n0: On scene change\n1 and above: Seconds until vanishing", new Tags());
+            Mod.AddToList("Ragdoll Sounds Volume", 0.5f, "Volume of the sounds for ragdolls\n0-1; default is 0.5", new Tags());
 
             Mod.GetFromFile();
             Mod.ModSaved += OnUISave;
@@ -77,5 +78,6 @@ namespace DieHarder
         public static int RagdollsOutsideMatches => (int)Core.Instance.Mod.Settings[10].SavedValue;
         public static int CleanupInMatches => (int)Core.Instance.Mod.Settings[11].SavedValue;
         public static int CleanupOutsideMatches => (int)Core.Instance.Mod.Settings[12].SavedValue;
+        public static float RagdollSoundsVolume => (float)Core.Instance.Mod.Settings[13].SavedValue;
     }
 }

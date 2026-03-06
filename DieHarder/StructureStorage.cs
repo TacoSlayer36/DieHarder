@@ -42,11 +42,15 @@ namespace DieHarder
                 case "Disc": return StructureType.Disc;
                 case "Ball": return StructureType.Ball;
                 case "Pillar": return StructureType.Pillar;
-                case "BoulderBall": return StructureType.BoulderBall;
                 case "RockCube": return StructureType.RockCube;
                 case "SmallRock": return StructureType.SmallRock;
                 case "Wall": return StructureType.Wall;
                 case "LargeRock": return StructureType.LargeRock;
+                case "DockedDisk": return StructureType.Disc;
+                case "BoulderBall": return StructureType.Ball;
+                case "PrisonedPillar": return StructureType.Pillar;
+                case "CageCube": return StructureType.RockCube;
+                case "WrappedWall": return StructureType.Wall;
                 default: return StructureType.Unknown;
             }
         }
@@ -123,22 +127,26 @@ namespace DieHarder
 
             structureGo.GetComponentInChildren<Rigidbody>().excludeLayers = Core.Instance.PhysicsLayerMask;
 
-            if (structureType is StructureType.Disc or StructureType.Ball)
+            if (structureType is StructureType.Disc)
             {
-                MeshCollider meshCollider = t.GetChild(0).GetComponent<MeshCollider>();
-                newCollider.AddComponent<MeshCollider>().sharedMesh = meshCollider.sharedMesh;
+                newCollider.AddComponent<BoxCollider>().size = new Vector3(0.63f, 0.14f, 0.63f);
+            }
+
+            if (structureType is StructureType.Ball)
+            {
+                newCollider.AddComponent<SphereCollider>().radius = 0.45f;
             }
 
             if (structureType is StructureType.Pillar or StructureType.RockCube or StructureType.Wall)
             {
-                BoxCollider boxCollider = t.GetChild(0).GetComponent<BoxCollider>();
+                BoxCollider boxCollider = t.GetComponentInChildren<BoxCollider>();
                 newCollider.AddComponent<BoxCollider>().size = boxCollider.size;
             }
 
-            if (structureType is StructureType.SmallRock or StructureType.LargeRock or StructureType.BoulderBall)
+            if (structureType is StructureType.SmallRock or StructureType.LargeRock)
             {
                 MeshCollider meshCollider = t.GetComponent<MeshCollider>();
-                newCollider.AddComponent<MeshCollider>().sharedMesh = meshCollider.sharedMesh;
+                newCollider.AddComponent<BoxCollider>().size = meshCollider.bounds.size;
             }
 
             newCollider.layer = Core.Instance.PhysicsLayer;
@@ -152,7 +160,7 @@ namespace DieHarder
 
     public class StructureKillStorage
     {
-        Structure __instance = null;
+        public Structure __instance = null;
         Vector3 killVelocity;
         bool playSFX;
         bool playVFX;
@@ -161,7 +169,11 @@ namespace DieHarder
         public void Kill()
         {
             if (__instance != null)
+            {
+                foreach (Collider c in __instance.GetComponentsInChildren<Collider>())
+                    c.enabled = true;
                 __instance.Kill(killVelocity, playSFX, playVFX, networked);
+            }
         }
 
         public static IEnumerator C_KillStructuresFromShockwave()

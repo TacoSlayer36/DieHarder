@@ -31,16 +31,6 @@ namespace DieHarder
 
 		public static GameObject DebugUi { get; private set; }
 		public static TextMeshPro DebugUiText { get; private set; }
-		public static GameObject CreateDebugUi(GameObject PlayerUi)
-		{
-			DebugUi = Calls.Create.NewText("Placeholder text.", 1f, Color.white, new Vector3(0f, 0.1f, 1f), Quaternion.Euler(0, 0, 0));
-			DebugUi.transform.localScale = new Vector3(0.2f, 0.2f, 0.2f);
-			DebugUi.transform.localPosition = new Vector3(0f, 0.1f, 0.96f);
-			DebugUi.transform.SetParent(PlayerUi.transform, false);
-			DebugUiText = DebugUi.GetComponent<TextMeshPro>();
-			DebugUi.SetActive(debugMode);
-			return DebugUi;
-		}
 
 		public static void PrintInGame(string message)
 		{

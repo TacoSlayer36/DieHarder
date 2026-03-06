@@ -1,15 +1,19 @@
 ﻿using Il2CppPlayFab.MultiplayerModels;
 using Il2CppRootMotion;
+using Il2CppRUMBLE.Audio;
 using Il2CppRUMBLE.Combat.ShiftStones;
 using Il2CppRUMBLE.Managers;
+using Il2CppRUMBLE.MoveSystem;
 using Il2CppRUMBLE.Physics.Utility;
 using Il2CppRUMBLE.Players;
+using Il2CppRUMBLE.Players.Presence;
 using Il2CppRUMBLE.Players.Scaling;
 using Il2CppRUMBLE.Players.Subsystems;
 using MelonLoader;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection.Metadata.Ecma335;
 using UnityEngine;
 using UnityEngine.Playables;
 
@@ -19,15 +23,21 @@ namespace DieHarder
     public class Ragdoll : PlayerVisualsClone
     {
         public static Dictionary<PlayerController, RagdollPool> RagdollPools = new();
+        public static Dictionary<PlayerController, Material> PlayerMats = new();
         public static Material LocalHeadClippedMat = null;
+        public static List<PlayerController> ghosts = new();
 
         public List<BoneRef> BoneRefs = new();
         private Dictionary<Joint, Transform> boneAnchorPosStorage = new();
         private Dictionary<Joint, Vector3> originalBoneAnchors = new();
+
+        public bool IsActive = true;
         public float Age = 0f;
         public float ClearAfterSeconds = 0f;
         public bool UndoGhostOnClear = true;
         public Transform Chest;
+
+        public object SinkRoutine = null;
 
         public bool IsJanky = false;
         public bool DoSmashLaunch = false;
@@ -40,6 +50,7 @@ namespace DieHarder
             newRagdoll = ownerPool.FetchRagdoll();
 
             bool launchFromGutter = Core.Instance.CurrentScene == "Map0" && newRagdoll.Chest.position.y <= -3 && newRagdoll.Chest.position.y >= -8;
+            bool isPerDamage = Core.Instance.IsInMatch && ModUISettings.RagdollsInMatches >= 4 || !Core.Instance.IsInMatch && ModUISettings.RagdollsOutsideMatches >= 3;
 
             if (killingStructure != null)
             {
@@ -47,18 +58,22 @@ namespace DieHarder
             }
             else if (!launchFromGutter)
             {
-                newRagdoll.AddVelocity(new Vector3(Random.RandomRange(-15, 15), 25, Random.RandomRange(-15, 15)));
+                Vector3 vel = new Vector3(Random.RandomRange(-15, 15), Random.RandomRange(23, 29), Random.RandomRange(-15, 15));
+                newRagdoll.AddVelocity(vel);
             }
             else
             {
-                Vector3 launchLateral = new Vector3(newRagdoll.Chest.position.x, 0f, newRagdoll.Chest.position.z).normalized * -45f;
-                newRagdoll.AddVelocity(launchLateral + Vector3.up * 95f);
+                Vector3 launchLateral = new Vector3(newRagdoll.Chest.position.x, 0f, newRagdoll.Chest.position.z).normalized * -35f;
+                if (isPerDamage) launchLateral *= 0.85f;
+                newRagdoll.AddVelocity(launchLateral + Vector3.up * Random.RandomRange(90f, 150f) * 0.7f);
             }
 
-            if ((Core.Instance.IsInMatch && ModUISettings.RagdollsInMatches >= 3) || (!Core.Instance.IsInMatch && ModUISettings.RagdollsOutsideMatches >= 2))
+            if (isPerDamage)
             {
                 newRagdoll.AddVelocity(newRagdoll.Chest.GetComponentInChildren<Rigidbody>().velocity);
-                newRagdoll.AddVelocity(new Vector3(Random.RandomRange(-15, 15), 25, Random.RandomRange(-15, 15)));
+                Vector3 vel = new Vector3(Random.RandomRange(-15, 15), Random.RandomRange(23, 29), Random.RandomRange(-15, 15));
+                if (launchFromGutter) vel *= 0.85f;
+                newRagdoll.AddVelocity(vel);
             }
 
             return newRagdoll;
@@ -66,7 +81,7 @@ namespace DieHarder
 
         public static RagdollPool FindOrCreateRagdollPool(PlayerController player)
         {
-            if (player?.GetSubsystem<PlayerVisuals>()?.GetComponentInChildren<SkinnedMeshRenderer>() == null)
+            if (player?.PlayerVisuals?.GetComponentInChildren<SkinnedMeshRenderer>() == null)
             {
                 Debug.Log("Could not create silhouette for player " + HelperFunctions.SanitizeString(player.assignedPlayer.Data.GeneralData.PublicUsername), false, 2);
                 return null;
@@ -88,7 +103,7 @@ namespace DieHarder
             {
                 foreach (Ragdoll ragdoll in pool?.PoolItems)
                 {
-                    ragdoll?.SetActive(false);
+                    MelonCoroutines.Start(ragdoll?.Sink());
                 }
             }
         }
@@ -136,7 +151,7 @@ namespace DieHarder
         public void SetupRagdoll()
         {
             Type = VisualsType.Ragdoll;
-            Visuals = GameObject.Instantiate(ParentController.GetSubsystem<PlayerVisuals>().gameObject);
+            Visuals = GameObject.Instantiate(ParentController.PlayerVisuals.gameObject);
             Visuals.SetActive(false);
             Setup(Visuals);
 
@@ -149,27 +164,23 @@ namespace DieHarder
 
             GrabBoneRefs();
 
-            PlayerVisuals parentPv = ParentController.GetSubsystem<PlayerVisuals>();
-            SkinnedMeshRenderer parentSmr = parentPv.GetComponentInChildren<SkinnedMeshRenderer>();
             SkinnedMeshRenderer mySmr = Visuals.GetComponentInChildren<SkinnedMeshRenderer>();
-            if (ParentController.ControllerType != Il2CppRUMBLE.Players.ControllerType.Local)
-            {
-                if (parentPv.NonHeadClippedMaterial == null)
-                    parentPv.NonHeadClippedMaterial = parentSmr.material;
-                mySmr.material = new Material(parentPv.NonHeadClippedMaterial);
-            }
-            else mySmr.material = parentPv.NonHeadClippedMaterial;
-
             mySmr.gameObject.layer = 0;
+            mySmr.material = PlayerMats[ParentController];
 
             foreach (Rigidbody rb in GetComponentsInChildren<Rigidbody>())
             {
-                string[] layers = new string[] { "Floor", "CombatFloor", "Environment", "LeanableEnvironment", "PedestalFloor" };
+                string[] layers = new string[] { "Floor", "CombatFloor", "Environment", "Leanable", "PedestalFloor" };
                 rb.includeLayers = new LayerMask().AddToMask(layers);
                 rb.includeLayers = rb.includeLayers | Core.Instance.PhysicsLayerMask;
+                rb.gameObject.tag = "Audio_Stone";
                 if (!Core.Prefs_LegacyRagdollJank.Value)
-                rb.excludeLayers = LayerMask.GetMask("Move", "PlayerController", "PlayerHitbox", "PlayerPhysicsBone", "PlayerFeet", "PlayerOnPlayerInteraction");
+                rb.excludeLayers = LayerMask.GetMask("Move", "PlayerController", "PlayerHitbox", "PlayerPhysics", "PlayerPhysicsTransform", "PlayerFeet", "PlayerOnPlayerInteraction");
                 rb.gameObject.layer = Core.Instance.PhysicsLayer;
+                if (rb.name.Contains("Foot") || rb.name.Contains("Head") || rb.name.Contains("Hand") || rb.name.Contains("Spine_A"))
+                    AddImpactAudio(rb.gameObject, true);
+                if (rb.name.Contains("Pelvis"))
+                    AddImpactAudio(rb.gameObject, false);
                 rb.ResetCenterOfMass();
             }
 
@@ -230,24 +241,24 @@ namespace DieHarder
         void Update()
         {
             Age += Time.deltaTime;
-
-            TrackVisualsToRbBones();
-
-            if (ClearAfterSeconds > 0 && Age >= ClearAfterSeconds)
-            {
-                if (UndoGhostOnClear)
-                {
-                    UnGhostifyOwner();
-                }
-                SetActive(false);
-            }
-
-            if (Chest.position.y < -20f) SetActive(false);
-            if (Chest.position.magnitude > 300f) SetActive(false);
         }
 
         void FixedUpdate()
         {
+            if (SinkRoutine != null) return;
+            
+            TrackVisualsToRbBones();
+
+            if (ClearAfterSeconds > 0 && Age >= ClearAfterSeconds)
+            {
+                MelonCoroutines.Start(Sink());
+            }
+
+            if (!Core.Instance.IsInMatch && Age >= 8.5f && ghosts.Contains(ParentController)) UnGhostifyOwner();
+
+            if (Chest.position.y < -20f) SetActive(false);
+            if (Chest.position.magnitude > 300f) SetActive(false);
+
             if (DoSmashLaunch && SmashLaunchDir.magnitude > 0.1f)
             {
                 AddVelocity(SmashLaunchDir * 20f);
@@ -269,6 +280,14 @@ namespace DieHarder
                     boneRef.VisualBone.transform.localRotation = boneRef.RagdollBone.transform.rotation;
                 }
             }
+        }
+
+        private void AddImpactAudio(GameObject gameObject, bool isImpact)
+        {
+            AudioSource aud = gameObject.AddComponent<AudioSource>();
+            aud.spatialBlend = 1.0f;
+            aud.spatialize = true;
+            gameObject.AddComponent<RagdollAudio>().IsImpact = isImpact;
         }
 
         private void CacheOriginalJointData()
@@ -331,6 +350,9 @@ namespace DieHarder
                 Joint joint = ragdollBone.GetComponent<Joint>();
                 if (joint == null) continue;
 
+                if (!boneAnchorPosStorage.ContainsKey(joint))
+                    CacheOriginalJointData();
+
                 Vector3 newAnchorPos = joint.transform.InverseTransformPoint(boneAnchorPosStorage[joint].transform.position);
                 if (!Core.Prefs_LegacyRagdollJank.Value)
                 {
@@ -362,7 +384,7 @@ namespace DieHarder
             }
             else
             {
-                Vector3 playerVel = ParentController.GetSubsystem<PlayerPhysics>().physicsRigidbody.velocity;
+                Vector3 playerVel = ParentController.PlayerPhysics.physicsRigidbody.velocity;
                 playerVel = new Vector3(playerVel.x, playerVel.y / 2f, playerVel.z);
                 chestRB.AddForce(playerVel * 10f, ForceMode.VelocityChange);
             }
@@ -376,41 +398,48 @@ namespace DieHarder
                     UnGhostifyOwner();
                 foreach (Rigidbody rb in transform.GetChild(0).GetComponentsInChildren<Rigidbody>())
                 {
-                    if (rb == null) continue;
+                    rb.isKinematic = false;
                     rb.velocity = Vector3.zero;
+                    Collider c = rb.GetComponent<Collider>();
+                    if (c != null) c.enabled = true;
                 }
                 IsJanky = false;
                 DoSmashLaunch = false;
             }
 
-            gameObject.SetActive(active);
+            gameObject.SetActive(false);
+        }
+
+        public IEnumerator Sink()
+        {
+            int t = 0;
+
+            foreach (Rigidbody rb in transform.GetChild(0).GetComponentsInChildren<Rigidbody>())
+            {
+                rb.isKinematic = true;
+                Collider c = rb.GetComponent<Collider>();
+                if (c != null) c.enabled = false;
+            }
+
+            while (t++ < 50)
+            {
+                yield return new WaitForFixedUpdate();
+                Visuals.transform.Translate(Vector3.down * 0.0005f * t);
+            }
+            SetActive(false);
         }
 
         public static void Ghostify(PlayerController player)
         {
-            SkinnedMeshRenderer smr = player.GetSubsystem<PlayerVisuals>().GetComponentInChildren<SkinnedMeshRenderer>();
-            if (LocalHeadClippedMat == null)
-            {
-                LocalHeadClippedMat = smr.material;
-                LocalHeadClippedMat.hideFlags = HideFlags.HideAndDontSave | HideFlags.DontUnloadUnusedAsset;
-            }
+            SkinnedMeshRenderer smr = player.PlayerVisuals.GetComponentInChildren<SkinnedMeshRenderer>();
+            smr.material = Core.Instance.GhostMat;
 
-            List<Renderer> allRenderers = player.GetComponentsInChildren<Renderer>().ToList();
-            List<Renderer> usedRenderers = new();
-            foreach (Renderer renderer in allRenderers)
-                if (!Core.ExcusedRenderers.Contains(renderer.name) && !Core.ExcusedRenderers.Contains(renderer.transform.parent.name) && !Core.ExcusedRenderers.Contains(renderer.transform.parent.parent.name))
-                    usedRenderers.Add(renderer);
-            List<Material> materials = new();
-            foreach (Renderer renderer in usedRenderers)
-            {
-                Material newMat = renderer.material;
-                newMat.hideFlags = HideFlags.HideAndDontSave | HideFlags.DontUnloadUnusedAsset;
-                materials.Add(newMat);
-                renderer.material = Core.Instance.GhostMat;
-                float isLocal = player.ControllerType == Il2CppRUMBLE.Players.ControllerType.Local ? 1f : 0f;
-                renderer.material.SetFloat("_IsLocal", isLocal);
-            }
-            Core.Instance.PlayerMatStorage[player] = materials;
+            bool rockCamBeingUsed = Core.FindRockCamBeingUsed();
+
+            float isLocal = player.controllerType == Il2CppRUMBLE.Players.ControllerType.Local && !rockCamBeingUsed ? 1f : 0f;
+            smr.material.SetFloat("_IsLocal", isLocal);
+
+            ghosts.Add(player);
         }
 
         public void GhostifyOwner()
@@ -420,24 +449,25 @@ namespace DieHarder
 
         public static void UnGhostify(PlayerController player)
         {
-            PlayerVisuals pv = player.GetSubsystem<PlayerVisuals>();
+            PlayerVisuals pv = player.PlayerVisuals;
             SkinnedMeshRenderer smr = pv.GetComponentInChildren<SkinnedMeshRenderer>();
             if (player.ControllerType == Il2CppRUMBLE.Players.ControllerType.Local)
                 smr.material = LocalHeadClippedMat;
-
-            List<Renderer> allRenderers = player.GetComponentsInChildren<Renderer>().ToList();
-            List<Renderer> usedRenderers = new();
-            foreach (Renderer renderer in allRenderers)
-                if (!Core.ExcusedRenderers.Contains(renderer.name) && !Core.ExcusedRenderers.Contains(renderer.transform.parent.name) && !Core.ExcusedRenderers.Contains(renderer.transform.parent.parent.name))
-                    usedRenderers.Add(renderer);
-            List<Material> storedMats = Core.Instance.PlayerMatStorage[player];
-            for (int i = 0; i < storedMats.Count; i++)
+            else
             {
-                if (usedRenderers.Count > i)
-                {
-                    usedRenderers[i].material = storedMats[i];
-                }
+                if (PlayerMats[player] == null) return;
+
+                smr.material = PlayerMats[player];
             }
+
+            if (ghosts.Contains(player)) ghosts.Remove(player);
+        }
+
+        public static void UnGhostifyAllGhosts()
+        {
+            List<PlayerController> ghostList = new List<PlayerController>(ghosts);
+            foreach (PlayerController player in ghostList)
+                UnGhostify(player);
         }
 
         public void UnGhostifyOwner()
@@ -447,6 +477,7 @@ namespace DieHarder
 
         public void ClearAfter(float time)
         {
+            GhostifyOwner();
             ClearAfterSeconds = Age + time;
         }
 
@@ -476,6 +507,7 @@ namespace DieHarder
                     return poolItems;
                 }
             }
+            public bool AnyRagdollsEnabled => PoolItems?.Any(r => r.IsActive && r.gameObject.active) ?? false;
             public Transform Transform;
 
             public Ragdoll FetchRagdoll()
@@ -488,12 +520,15 @@ namespace DieHarder
                 }
                 else
                 {
-                    List<Ragdoll> inactivePoolItems = PoolItems.Where(pr => !pr.gameObject.activeSelf).ToList();
+                    List<Ragdoll> inactivePoolItems = PoolItems.Where(pr => !pr.IsActive).ToList();
                     if (inactivePoolItems.Count == 0) poolRagdoll = CreateRagdoll();
                     else poolRagdoll = inactivePoolItems.First();
                 }
-                
+
+                if (poolRagdoll.SinkRoutine != null) MelonCoroutines.Stop(poolRagdoll.SinkRoutine);
+                poolRagdoll.SinkRoutine = null;
                 poolRagdoll.gameObject.SetActive(true);
+                poolRagdoll.IsActive = true;
                 poolRagdoll.CopyPose();
 
                 if (Core.Prefs_LegacyRagdollJank.Value)
@@ -519,6 +554,87 @@ namespace DieHarder
                 newRagdoll.SetupRagdoll();
                 return newRagdoll;
             }
+        }
+    }
+
+    [RegisterTypeInIl2Cpp]
+    public class RagdollAudio : MonoBehaviour
+    {
+        AudioSource audioSource;
+        Rigidbody rigidbody;
+        public bool IsImpact = true;
+        bool isWhooshing = false;
+        List<Vector3> vels = new();
+
+        public AudioClip AudioClip => audioSource.clip;
+        public float Volume => audioSource.volume;
+
+        public void Play()
+        {
+            audioSource.Play();
+        }
+
+        void Start()
+        {
+            audioSource = GetComponent<AudioSource>();
+            rigidbody = GetComponent<Rigidbody>();
+        }
+
+        void OnCollisionEnter(Collision collision)
+        {
+            if (audioSource == null) return;
+            if (!IsImpact) return;
+
+            float relativeVel = HelperFunctions.GetRelativeVelocity(vels[0], collision).magnitude;
+
+            bool playSoft = false;
+            if (relativeVel <= 2 && Core.Instance.RagdollAudioClipsSoft.Count > 0) playSoft = true;
+
+            if (!playSoft)
+            {
+                if (Core.Instance.RagdollAudioClipsHard.Count > 0)
+                {
+                    audioSource.clip = Core.Instance.RagdollAudioClipsHard[Random.RandomRangeInt(0, Core.Instance.RagdollAudioClipsHard.Count)];
+                    audioSource.volume = Mathf.Clamp01(relativeVel * 0.4f) * ModUISettings.RagdollSoundsVolume;
+                }
+            }
+            else
+            {
+                audioSource.clip = Core.Instance.RagdollAudioClipsSoft[Random.RandomRangeInt(0, Core.Instance.RagdollAudioClipsSoft.Count)];
+                audioSource.volume = Mathf.Clamp01(relativeVel * 0.6f) * ModUISettings.RagdollSoundsVolume;
+            }
+
+            audioSource.Play();
+        }
+
+        void FixedUpdate()
+        {
+            vels.Add(rigidbody.velocity);
+            if (vels.Count > 1) vels.RemoveAt(0);
+
+            if (IsImpact) return;
+            if (audioSource == null) return;
+
+            if (audioSource.clip == null)
+            {
+                audioSource.clip = Core.Instance.StructurePools[0]?.PoolItem?.GetComponentInChildren<Structure>()?.whooshAudioCall?.Clips?.FirstOrDefault()?.Clip;
+            }
+            if (audioSource == null) return;
+
+            audioSource.loop = true;
+
+            if (rigidbody.velocity.magnitude > 0.5f && !isWhooshing)
+            {
+                audioSource.Play();
+                isWhooshing = true;
+            }
+            if (rigidbody.velocity.magnitude < 0.5f && isWhooshing)
+            {
+                audioSource.Stop();
+                isWhooshing = false;
+            }
+
+            audioSource.volume = Mathf.Clamp01((rigidbody.velocity.magnitude - 1f) * 0.4f) * ModUISettings.RagdollSoundsVolume;
         }
     }
 }

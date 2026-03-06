@@ -3,7 +3,6 @@ using Il2CppLiv.Lck.Smoothing;
 using Il2CppLiv.Lck.Tablet;
 using Il2CppPlayFab.ClientModels;
 using Il2CppRUMBLE.Combat.ShiftStones;
-using Il2CppRUMBLE.Integrations.LIV;
 using Il2CppRUMBLE.Managers;
 using Il2CppRUMBLE.Players;
 using Il2CppRUMBLE.Players.Comfort;
@@ -20,6 +19,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
+using static MelonLoader.MelonLogger;
 
 namespace DieHarder
 {
@@ -42,6 +42,7 @@ namespace DieHarder
                                     DamagedPlayer.ParentController.GetChest().position;
 
         object AnimationCoroutine;
+        public static object StructureKillRoutine;
         public bool IsAnimationRunning = false;
 
         public static float FogEndDistanceStorage = -1f;
@@ -113,8 +114,6 @@ namespace DieHarder
             IsAnimationRunning = true;
 
             // Store and modify all camera info
-            LivPlayersActive = Core.Instance.LIVPlayersInstance.m_Active;
-            Core.Instance.LIVPlayersInstance.m_Active = false;
             Core.Instance.StoredCameraInfos = Core.GenerateCamInfos();
             foreach (CameraInfo cameraInfo in Core.Instance.StoredCameraInfos)
             {
@@ -147,8 +146,12 @@ namespace DieHarder
             if (HowardInvolved)
             {
                 SkinnedMeshRenderer howardSmr = Core.Instance.HowardSmr;
-                howardSmr.material = Core.Instance.PrimarySilhouetteMat;
-                howardSmr.gameObject.layer = Core.Instance.VisualLayer;
+                if (howardSmr != null)
+                {
+                    if (ModUISettings.PrimaryEffectColor.ToLower() != "none")
+                        howardSmr.material = Core.Instance.PrimarySilhouetteMat;
+                    howardSmr.gameObject.layer = Core.Instance.VisualLayer;
+                }
             }
 
             // Create structure silhouette
@@ -170,10 +173,12 @@ namespace DieHarder
             bool howardDied = false;
             if (HowardInvolved && Core.Instance.Howard != null && Core.Instance.Howard.currentHp == 0) howardDied = true;
 
-            if (!HowardInvolved || (HowardInvolved && !howardDied))
+            if (!HowardInvolved || (HowardInvolved && !howardDied) || Core.Instance.HowardSmr == null)
                 Core.Instance.CreateShockwave(DamagePos, DamagedPlayer.ParentController);
             else
+            {
                 Core.Instance.CreateShockwave(Core.Instance.HowardSmr.transform.position + Vector3.up * 0.8f, DamagedPlayer.ParentController);
+            }
 
             // Create ragdoll
             if (!HowardInvolved || (HowardInvolved && !howardDied))
@@ -183,7 +188,7 @@ namespace DieHarder
             ScreenFlash.CreateScreenFlash(PlayerManager.Instance.LocalPlayer.Controller.GetCamera().transform, LayerMask.NameToLayer("PlayerController"));
 
             // Shake the camera
-            PlayerHaptics ph = PlayerManager.instance.localPlayer.Controller.GetSubsystem<PlayerHaptics>();
+            PlayerHaptics ph = PlayerManager.instance.localPlayer.Controller.PlayerHaptics;
             if (ModUISettings.DramaticEffectsScreenShake == 2)
             {
                 ph.AddHapticsSignal(10f, 10f, 10f);
@@ -208,6 +213,8 @@ namespace DieHarder
 
             if (strong)
             {
+                if (Impact.StructureKillRoutine != null) MelonCoroutines.Stop(Impact.StructureKillRoutine);
+                Impact.StructureKillRoutine = null;
                 foreach (StructureKillStorage structureKillStorage in Core.Instance.StructureKillStorages)
                 {
                     structureKillStorage.Kill();
@@ -216,7 +223,7 @@ namespace DieHarder
             }
             else
             {
-                MelonCoroutines.Start(StructureKillStorage.C_KillStructuresFromShockwave());
+                StructureKillRoutine = MelonCoroutines.Start(StructureKillStorage.C_KillStructuresFromShockwave());
             }
 
             ClearPlayerSilhouettes();
@@ -224,8 +231,6 @@ namespace DieHarder
 
             if (PlayerManager.Instance.LocalPlayer?.Controller?.GetCamera() != null)
                 PlayerManager.Instance.localPlayer.Controller.GetCamera().enabled = true;
-
-            Core.Instance.LIVPlayersInstance.m_Active = LivPlayersActive;
 
             foreach (CameraInfo cameraInfo in Core.Instance.StoredCameraInfos)
             {
@@ -243,8 +248,11 @@ namespace DieHarder
             if (HowardInvolved)
             {
                 SkinnedMeshRenderer howardSmr = Core.Instance.HowardSmr;
-                howardSmr.material = Core.Instance.HowardMat;
-                howardSmr.gameObject.layer = 0;
+                if (howardSmr != null)
+                {
+                    howardSmr.material = Core.Instance.HowardMat;
+                    howardSmr.gameObject.layer = 0;
+                }
             }
 
             if (SphereBackground != null)
@@ -285,15 +293,17 @@ namespace DieHarder
             HelperFunctions.DisableAllComponents(newStructureSilhouette);
             GameObject.Destroy(newStructureSilhouette.GetComponent<Rigidbody>());
 
-            newStructureSilhouette.name = "StructureSilhouette";
-            newStructureSilhouette.GetComponent<MeshRenderer>().sharedMaterial = Core.Instance.PrimarySilhouetteMat;
-            newStructureSilhouette.layer = Core.Instance.VisualLayer;
-
-            if (structureInfo.Type == StructureStorage.StructureType.BoulderBall)
+            foreach (Renderer r in newStructureSilhouette.GetComponentsInChildren<Renderer>())
             {
-                newStructureSilhouette.transform.GetChild(0).GetComponent<MeshRenderer>().sharedMaterial = Core.Instance.PrimarySilhouetteMat;
-                newStructureSilhouette.transform.GetChild(0).gameObject.layer = Core.Instance.VisualLayer;
+                if (ModUISettings.PrimaryEffectColor.ToLower() != "none")
+                {
+                    r.SetMaterial(Core.Instance.PrimarySilhouetteMat);
+                    r.materials = new Material[1] { Core.Instance.PrimarySilhouetteMat };
+                }
+                r.gameObject.layer = Core.Instance.VisualLayer;
             }
+
+            newStructureSilhouette.name = "StructureSilhouette";
 
             StructureSilhouettes.Add(newStructureSilhouette);
         }
@@ -361,22 +371,13 @@ namespace DieHarder
             Visuals = setupObject;
 
             Transform chest = Visuals.transform.GetChild(1).GetChild(0).GetChild(4).GetChild(0);
-            ShiftStones[0] = chest?.GetChild(1)?.gameObject?.GetComponentInChildren<ShiftStone>();
-            ShiftStones[1] = chest?.GetChild(2)?.gameObject?.GetComponentInChildren<ShiftStone>();
+            ShiftStones[0] = chest?.GetChild(1)?.gameObject?.GetComponentInChildren<ShiftStone>(true);
+            ShiftStones[1] = chest?.GetChild(2)?.gameObject?.GetComponentInChildren<ShiftStone>(true);
             if (Type == VisualsType.Silhouette)
             {
                 ShiftStones[0]?.transform?.SetParent(Visuals.transform);
                 ShiftStones[1]?.transform?.SetParent(Visuals.transform);
             }
-
-            foreach (Rigidbody rb in Visuals.GetComponentsInChildren<Rigidbody>())
-                GameObject.Destroy(rb);
-
-            foreach (Joint joint in Visuals.GetComponentsInChildren<Joint>())
-                GameObject.Destroy(joint);
-
-            foreach (Collider c in Visuals.GetComponentsInChildren<Collider>())
-                GameObject.Destroy(c);
 
             foreach (var m in Visuals.GetComponentsInChildren<Renderer>())
             {
@@ -389,11 +390,12 @@ namespace DieHarder
                     if (Type == VisualsType.Silhouette)
                     {
                         m.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-                        m.sharedMaterial = Core.Instance.PrimarySilhouetteMat;
+                        if (ModUISettings.PrimaryEffectColor.ToLower() != "none")
+                            m.sharedMaterial = Core.Instance.PrimarySilhouetteMat;
                         m.gameObject.layer = Core.Instance.VisualLayer;
 
                         float isLocal = ParentController.ControllerType == Il2CppRUMBLE.Players.ControllerType.Local ? 1f : 0f;
-                        m.sharedMaterial.SetFloat("_IsLocal", isLocal);
+                        m.material.SetFloat("_IsLocal", isLocal);
                     }
                 }
             }
@@ -426,7 +428,7 @@ namespace DieHarder
 
         public void UpdateShiftStones()
         {
-            PlayerShiftstoneSystem parentStoneSystem = ParentController.GetSubsystem<PlayerShiftstoneSystem>();
+            PlayerShiftstoneSystem parentStoneSystem = ParentController.PlayerShiftstones;
             ShiftStone parentStone0 = parentStoneSystem?.shiftStoneSockets[0]?.assignedShifstone;
             ShiftStone parentStone1 = parentStoneSystem?.shiftStoneSockets[1]?.assignedShifstone;
 
@@ -460,45 +462,36 @@ namespace DieHarder
             if (Visuals == null) return;
 
             SkinnedMeshRenderer smr = Visuals.GetComponentInChildren<SkinnedMeshRenderer>();
-            smr.material = Core.Instance.PrimarySilhouetteMat;
+            if (ModUISettings.PrimaryEffectColor.ToLower() != "none")
+                smr.material = Core.Instance.PrimarySilhouetteMat;
+            else if (Ragdoll.PlayerMats.ContainsKey(ParentController))
+                ReapplyVisuals();
 
             if (ShiftStones[0] != null)
             {
-                ShiftStones[0].GetComponentInChildren<MeshRenderer>().material = Core.Instance.PrimarySilhouetteMat;
-                ShiftStones[0].transform.position = ParentController.GetSubsystem<PlayerShiftstoneSystem>().shiftStoneSockets[0].assignedShifstone.transform.position;
-                ShiftStones[0].transform.rotation = ParentController.GetSubsystem<PlayerShiftstoneSystem>().shiftStoneSockets[0].assignedShifstone.transform.rotation;
-                ShiftStones[0].transform.parent.localScale = ParentController.GetSubsystem<PlayerShiftstoneSystem>().shiftStoneSockets[0].assignedShifstone.transform.parent.localScale;
-                ShiftStones[0].transform.localScale = ParentController.GetSubsystem<PlayerShiftstoneSystem>().shiftStoneSockets[0].assignedShifstone.transform.localScale;
+                if (ModUISettings.PrimaryEffectColor.ToLower() != "none")
+                    ShiftStones[0].GetComponentInChildren<MeshRenderer>().material = Core.Instance.PrimarySilhouetteMat;
+                ShiftStones[0].transform.position = ParentController.PlayerShiftstones.shiftStoneSockets[0].assignedShifstone.transform.position;
+                ShiftStones[0].transform.rotation = ParentController.PlayerShiftstones.shiftStoneSockets[0].assignedShifstone.transform.rotation;
+                ShiftStones[0].transform.parent.localScale = ParentController.PlayerShiftstones.shiftStoneSockets[0].assignedShifstone.transform.parent.localScale;
+                ShiftStones[0].transform.localScale = ParentController.PlayerShiftstones.shiftStoneSockets[0].assignedShifstone.transform.localScale;
                 ShiftStones[0].transform.localScale *= (ParentController.assignedPlayer.Data.PlayerMeasurement.ArmSpan / 1.6f);
             }
             if (ShiftStones[1] != null)
             {
-                ShiftStones[1].GetComponentInChildren<MeshRenderer>().material = Core.Instance.PrimarySilhouetteMat;
-                ShiftStones[1].transform.position = ParentController.GetSubsystem<PlayerShiftstoneSystem>().shiftStoneSockets[1].assignedShifstone.transform.position;
-                ShiftStones[1].transform.rotation = ParentController.GetSubsystem<PlayerShiftstoneSystem>().shiftStoneSockets[1].assignedShifstone.transform.rotation;
-                ShiftStones[1].transform.parent.localScale = ParentController.GetSubsystem<PlayerShiftstoneSystem>().shiftStoneSockets[1].assignedShifstone.transform.parent.localScale;
-                ShiftStones[1].transform.localScale = ParentController.GetSubsystem<PlayerShiftstoneSystem>().shiftStoneSockets[1].assignedShifstone.transform.localScale;
+                if (ModUISettings.PrimaryEffectColor.ToLower() != "none")
+                    ShiftStones[1].GetComponentInChildren<MeshRenderer>().material = Core.Instance.PrimarySilhouetteMat;
+                ShiftStones[1].transform.position = ParentController.PlayerShiftstones .shiftStoneSockets[1].assignedShifstone.transform.position;
+                ShiftStones[1].transform.rotation = ParentController.PlayerShiftstones.shiftStoneSockets[1].assignedShifstone.transform.rotation;
+                ShiftStones[1].transform.parent.localScale = ParentController.PlayerShiftstones.shiftStoneSockets[1].assignedShifstone.transform.parent.localScale;
+                ShiftStones[1].transform.localScale = ParentController.PlayerShiftstones.shiftStoneSockets[1].assignedShifstone.transform.localScale;
                 ShiftStones[1].transform.localScale *= (ParentController.assignedPlayer.Data.PlayerMeasurement.ArmSpan / 1.5f);
             }
 
-            bool rockCamBeingUsed = false;
-            try
-            {
-                PlayerLIV playerLiv = PlayerManager.Instance.LocalPlayer.Controller.GetSubsystem<PlayerLIV>();
-                Il2CppRUMBLE.Recording.LCK.Extensions.LCKCameraController lckCamera = playerLiv.LckTablet.gameObject.GetComponent<Il2CppRUMBLE.Recording.LCK.Extensions.LCKCameraController>();
-                LCKTabletDetachedPreview lckPreview = playerLiv.LckTablet.gameObject.GetComponent<LCKTabletDetachedPreview>();
-
-                // If you're using rock cam (recording or projecting to monitor) and it's not in first person
-                if (lckCamera.CurrentCameraMode != Il2CppRUMBLE.Recording.LCK.Extensions.CameraMode.FirstPerson && (PlayerLIV.LCKIsRecording || lckPreview.ActivePreviewNo == 5))
-                    rockCamBeingUsed = true;
-            }
-            catch { }
+            bool rockCamBeingUsed = Core.FindRockCamBeingUsed();
 
             float isLocal = ParentController.controllerType == Il2CppRUMBLE.Players.ControllerType.Local && !rockCamBeingUsed ? 1f : 0f;
-            foreach (Renderer renderer in Visuals.GetComponentsInChildren<Renderer>())
-            {
-                renderer.material.SetFloat("_IsLocal", isLocal);
-            }
+            smr.material.SetFloat("_IsLocal", isLocal);
 
             List<Transform> parentBones = ParentController.GetBones()
                 .Select(bone => bone.Transform)
@@ -520,7 +513,8 @@ namespace DieHarder
             SkinnedMeshRenderer myRenderer = Visuals.GetComponentInChildren<SkinnedMeshRenderer>();
             SkinnedMeshRenderer parentRenderer = ParentController.transform.GetChild(1).GetComponentInChildren<SkinnedMeshRenderer>();
             myRenderer.sharedMesh = parentRenderer.sharedMesh;
-            myRenderer.material = ParentController.GetSubsystem<PlayerVisuals>().NonHeadClippedMaterial;
+            if (Ragdoll.PlayerMats[ParentController] == null) return;
+            myRenderer.material = Ragdoll.PlayerMats[ParentController];
         }
     }
 }
