@@ -37,13 +37,15 @@ namespace DieHarder
         public bool UndoGhostOnClear = true;
         public Transform Chest;
 
+        public float Drama = 1f;
+
         public object SinkRoutine = null;
 
         public bool IsJanky = false;
         public bool DoSmashLaunch = false;
         public Vector3 SmashLaunchDir = Vector3.zero;
 
-        public static Ragdoll SpawnRagdoll(PlayerController player, StructureStorage killingStructure = null)
+        public static Ragdoll SpawnRagdoll(PlayerController player, StructureStorage killingStructure = null, float drama = 1f)
         {
             Ragdoll newRagdoll;
             RagdollPool ownerPool = FindOrCreateRagdollPool(player);
@@ -51,6 +53,7 @@ namespace DieHarder
 
             bool launchFromGutter = Core.Instance.CurrentScene == "Map0" && newRagdoll.Chest.position.y <= -3 && newRagdoll.Chest.position.y >= -8;
             bool isPerDamage = Core.Instance.IsInMatch && ModUISettings.RagdollsInMatches >= 4 || !Core.Instance.IsInMatch && ModUISettings.RagdollsOutsideMatches >= 3;
+            newRagdoll.Drama = drama;
 
             if (killingStructure != null)
             {
@@ -65,7 +68,8 @@ namespace DieHarder
             {
                 Vector3 launchLateral = new Vector3(newRagdoll.Chest.position.x, 0f, newRagdoll.Chest.position.z).normalized * -35f;
                 if (isPerDamage) launchLateral *= 0.85f;
-                newRagdoll.AddVelocity(launchLateral + Vector3.up * Random.RandomRange(90f, 150f) * 0.7f);
+                Vector3 launchDir = launchLateral + Vector3.up * Random.RandomRange(90f, 150f) * 0.7f;
+                newRagdoll.AddVelocity(launchDir * drama);
             }
 
             if (isPerDamage)
@@ -73,7 +77,7 @@ namespace DieHarder
                 newRagdoll.AddVelocity(newRagdoll.Chest.GetComponentInChildren<Rigidbody>().velocity);
                 Vector3 vel = new Vector3(Random.RandomRange(-15, 15), Random.RandomRange(23, 29), Random.RandomRange(-15, 15));
                 if (launchFromGutter) vel *= 0.85f;
-                newRagdoll.AddVelocity(vel);
+                newRagdoll.AddVelocity(vel * drama);
             }
 
             return newRagdoll;
@@ -103,7 +107,8 @@ namespace DieHarder
             {
                 foreach (Ragdoll ragdoll in pool?.PoolItems)
                 {
-                    MelonCoroutines.Start(ragdoll?.Sink());
+                    if (ragdoll == null) continue;
+                    ragdoll.SinkRoutine = MelonCoroutines.Start(ragdoll.Sink());
                 }
             }
         }
@@ -153,7 +158,7 @@ namespace DieHarder
             Type = VisualsType.Ragdoll;
             Visuals = GameObject.Instantiate(ParentController.PlayerVisuals.gameObject);
             Visuals.SetActive(false);
-            Setup(Visuals);
+            SetUp(Visuals);
 
             Visuals.transform.SetParent(transform);
             Chest = transform.GetChild(0).GetChild(0).GetChild(3);
@@ -251,7 +256,7 @@ namespace DieHarder
 
             if (ClearAfterSeconds > 0 && Age >= ClearAfterSeconds)
             {
-                MelonCoroutines.Start(Sink());
+                SinkRoutine = MelonCoroutines.Start(Sink());
             }
 
             if (!Core.Instance.IsInMatch && Age >= 8.5f && ghosts.Contains(ParentController)) UnGhostifyOwner();
@@ -379,14 +384,14 @@ namespace DieHarder
             if (killingStructure.Velocity.magnitude > 0.01f)
             {
                 Vector3 defaultVel = (killingStructure.Pos - chestRB.transform.position).normalized;
-                Vector3 actualVel = killingStructure.Velocity.magnitude < 0.5f ? defaultVel * killingStructure.Mass : killingStructure.Velocity * killingStructure.Mass;
-                chestRB.AddForceAtPosition(actualVel * 0.09f, killingStructure.Pos, ForceMode.Impulse);
+                Vector3 actualVel = killingStructure.Velocity.magnitude < 0.5f ? defaultVel : killingStructure.Velocity;
+                chestRB.AddForceAtPosition(actualVel * Drama * 20f, killingStructure.Pos, ForceMode.Impulse);
             }
             else
             {
                 Vector3 playerVel = ParentController.PlayerPhysics.physicsRigidbody.velocity;
                 playerVel = new Vector3(playerVel.x, playerVel.y / 2f, playerVel.z);
-                chestRB.AddForce(playerVel * 10f, ForceMode.VelocityChange);
+                chestRB.AddForce(playerVel * 10f * Drama, ForceMode.VelocityChange);
             }
         }
 
@@ -431,12 +436,14 @@ namespace DieHarder
 
         public static void Ghostify(PlayerController player)
         {
+            if (!ModUISettings.EnableGhostification) return;
+
             SkinnedMeshRenderer smr = player.PlayerVisuals.GetComponentInChildren<SkinnedMeshRenderer>();
             smr.material = Core.Instance.GhostMat;
 
-            bool rockCamBeingUsed = Core.FindRockCamBeingUsed();
-
-            float isLocal = player.controllerType == Il2CppRUMBLE.Players.ControllerType.Local && !rockCamBeingUsed ? 1f : 0f;
+            //bool rockCamBeingUsed = Core.FindRockCamBeingUsed();
+            
+            float isLocal = player.controllerType == Il2CppRUMBLE.Players.ControllerType.Local ? 1f : 0f;
             smr.material.SetFloat("_IsLocal", isLocal);
 
             ghosts.Add(player);
@@ -475,9 +482,9 @@ namespace DieHarder
             UnGhostify(ParentController);
         }
 
-        public void ClearAfter(float time)
+        public void ClearAfter(float time, bool ghostify = true)
         {
-            GhostifyOwner();
+            if (ghostify) GhostifyOwner();
             ClearAfterSeconds = Age + time;
         }
 

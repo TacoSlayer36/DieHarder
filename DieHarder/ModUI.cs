@@ -1,4 +1,6 @@
-﻿using RumbleModUI;
+﻿using Il2CppRUMBLE.Managers;
+using Il2CppRUMBLE.Players;
+using RumbleModUI;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -24,7 +26,7 @@ namespace DieHarder
             Mod.AddToList("Impact Frame Duration", 500f, "The time in milliseconds the freeze frame will last\n0ms - 1500ms\n(It's recommended to keep this slightly longer than your pre-impact audio length)", new Tags());
             Mod.AddToList("Include Structure In Impact", true, 0, "Include the structure that delivered the killing blow in the impact frame", new Tags());
             Mod.AddToList("Dramatic Effects Volume", 1f, "Volume of the sounds for the dramatic effects\n0-1; default is 1", new Tags());
-            Mod.AddToList("Dramatic Effects Screen Shake", 1, "When to shake the screen during dramatic effects\n0: Never\n1: Take comfort settings into account\n2: Always fully", new Tags());
+            Mod.AddToList("Dramatic Effects Haptics", true, 0, "Whether to shake the screen and vibrate controllers for dramatic effects\n(Takes into account in-game settings by default)", new Tags());
             Mod.AddToList("Primary Effect Color", "#000000", "The color of the player/structure silhouettes during the impact frame\nUse \"Match\" to base it on winning/losing matches and rounds\nUse \"None\" to prevent silhouette-ing", new Tags());
             Mod.AddToList("Secondary Effect Color", "Match", "The color of the background during dramatic effects\nUse \"Match\" to base it on winning/losing matches and rounds", new Tags());
             Mod.AddToList("Ragdolls In Matches", 2, "0: Disabled\n1: On match end\n2: On round end\n<#F80>3: On hit (prone to lag)\n<#F00>4: Per damage (God help you)", new Tags());
@@ -32,6 +34,8 @@ namespace DieHarder
             Mod.AddToList("Cleanup In Matches", 1, "When to remove ragdolls in matches\n0: Between matches\n1: Between rounds\n2 and above: Seconds until vanishing", new Tags());
             Mod.AddToList("Cleanup Outside Matches", 7, "When to remove ragdolls outside matches\n0: On scene change\n1 and above: Seconds until vanishing", new Tags());
             Mod.AddToList("Ragdoll Sounds Volume", 0.5f, "Volume of the sounds for ragdolls\n0-1; default is 0.5", new Tags());
+            Mod.AddToList("Enable Ghost-ification", true, 0, "Players that drop ragdolls can take on a ghostly form afterwards", new Tags());
+            Mod.AddToList("Variable Effects", 3, "Whether to base the intensity of the effects on the power of the hit\n0: Disabled\n1: Enabled normally\n2: Take overkill into account\n3: Overkill damage is weighted more", new Tags());
 
             Mod.GetFromFile();
             Mod.ModSaved += OnUISave;
@@ -47,7 +51,7 @@ namespace DieHarder
                 {
                     foreach (Ragdoll ragdoll in pool.PoolItems)
                     {
-                        ragdoll.ClearAfter(ModUISettings.CleanupInMatches);
+                        ragdoll.ClearAfter(ModUISettings.CleanupInMatches, false);
                     }
                 }
             }
@@ -57,8 +61,15 @@ namespace DieHarder
                 {
                     foreach (Ragdoll ragdoll in pool.PoolItems)
                     {
-                        ragdoll.ClearAfter(ModUISettings.CleanupOutsideMatches);
+                        ragdoll.ClearAfter(ModUISettings.CleanupOutsideMatches, false);
                     }
+                }
+            }
+            if (!ModUISettings.EnableGhostification)
+            {
+                foreach (Player player in PlayerManager.Instance.AllPlayers)
+                {
+                    Ragdoll.UnGhostify(player.Controller);
                 }
             }
         }
@@ -71,7 +82,7 @@ namespace DieHarder
         public static float ImpactFrameDuration => Mathf.Clamp((float)Core.Instance.Mod.Settings[3].SavedValue, 0, Core.Instance.DebugEnabled ? float.MaxValue : 1500f);
         public static bool IncludeStructureInImpact => (bool)Core.Instance.Mod.Settings[4].SavedValue;
         public static float DramaticEffectsVolume=> (float)Core.Instance.Mod.Settings[5].SavedValue;
-        public static int DramaticEffectsScreenShake=> (int)Core.Instance.Mod.Settings[6].SavedValue;
+        public static bool DramaticEffectsHaptics => (bool)Core.Instance.Mod.Settings[6].SavedValue;
         public static string PrimaryEffectColor => ((string)Core.Instance.Mod.Settings[7].SavedValue).ToLower();
         public static string SecondaryEffectColor => ((string)Core.Instance.Mod.Settings[8].SavedValue).ToLower();
         public static int RagdollsInMatches => (int)Core.Instance.Mod.Settings[9].SavedValue;
@@ -79,5 +90,7 @@ namespace DieHarder
         public static int CleanupInMatches => (int)Core.Instance.Mod.Settings[11].SavedValue;
         public static int CleanupOutsideMatches => (int)Core.Instance.Mod.Settings[12].SavedValue;
         public static float RagdollSoundsVolume => (float)Core.Instance.Mod.Settings[13].SavedValue;
+        public static bool EnableGhostification => (bool)Core.Instance.Mod.Settings[14].SavedValue;
+        public static int VariableEffects => (int)Core.Instance.Mod.Settings[15].SavedValue;
     }
 }

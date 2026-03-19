@@ -61,7 +61,7 @@ namespace DieHarder
         {
             yield return new WaitForSeconds(1.5f);
             Core.Instance.HasRoundEnded = true;
-            Core.Instance.PlayerHealths.Clear();
+            Core.Instance.PlayerDamages.Clear();
         }
     }
 
@@ -105,14 +105,21 @@ namespace DieHarder
             try
             {
                 bool isAnimationRunning = Core.Instance.ActiveImpact != null && Core.Instance.ActiveImpact.IsAnimationRunning;
-                if (isAnimationRunning && Core.Instance.IsInMatch && Core.Instance.HasRoundEnded)
+                bool isEndOfMatch = Core.Instance.IsInMatch && Core.Instance.HasRoundEnded;
+                bool isInGym = Core.Instance.CurrentScene == "Gym";
+                if (isAnimationRunning && (isEndOfMatch || isInGym))
                 {
+                    if (StructureStorage.KillDelayed.Contains(__instance)) return true;
+
                     Core.Instance.StructureKillStorages.Add(new StructureKillStorage(__instance, killVelocity, playSFX, playVFX, networked));
                     Rigidbody rb = __instance.GetComponentInChildren<Rigidbody>();
                     rb.velocity = Vector3.zero;
                     rb.angularVelocity = Vector3.zero;
                     foreach (Collider c in __instance.GetComponentsInChildren<Collider>())
                         c.enabled = false;
+
+                    StructureStorage.KillDelayed.Add(__instance);
+
                     return false;
                 }
                 return true;
@@ -176,6 +183,28 @@ namespace DieHarder
             if (Core.Instance.PlayerSilhouettes.TryGetValue(__instance.parentController, out PlayerVisualsClone playerVisualsClone))
             {
                 playerVisualsClone.UpdateShiftStones();
+            }
+        }
+    }
+
+    [HarmonyPatch(typeof(PlayerHealth), nameof(PlayerHealth.SetHealth), new Type[] { typeof(short), typeof(short), typeof(bool) })]
+    public static class PlayerHealth_SetHealth_Patch
+    {
+        private static void Prefix(ref PlayerHealth __instance, short newHealth, short previousHealth, bool useEffects)
+        {
+            try
+            {
+                if (newHealth < previousHealth)
+                {
+                    Core.Instance.OnPlayerDamage(__instance.parentController, newHealth, previousHealth);
+
+                    if (newHealth <= 0)
+                        Core.Instance.OnPlayerHealthDepleted(__instance);
+                }
+            }
+            catch
+            {
+                return;
             }
         }
     }

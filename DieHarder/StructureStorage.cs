@@ -13,6 +13,7 @@ namespace DieHarder
     public class StructureStorage
     {
         public GameObject StructureGO;
+        public Structure StructureComponent => StructureGO.GetComponentInChildren<Structure>();
         public Vector3 Pos;
         public Quaternion Rot;
         public Vector3 Velocity;
@@ -20,6 +21,7 @@ namespace DieHarder
 
         public static List<GameObject> ProcessedStructuresForPhysics = new();
         public static List<List<StructureStorage>> GameStates = new();
+        public static List<Structure> KillDelayed = new();
 
         public enum StructureType
         {
@@ -188,6 +190,8 @@ namespace DieHarder
                 {
                     killStorage.Kill();
                 }
+                Core.Instance.StructureKillStorages.Clear();
+                StructureStorage.KillDelayed.Clear();
                 yield break;
             }
 
@@ -219,6 +223,7 @@ namespace DieHarder
                 killStorage.Kill();
 
             Core.Instance.StructureKillStorages.Clear();
+            StructureStorage.KillDelayed.Clear();
         }
 
         public StructureKillStorage(Structure instance, Vector3 killVelocity, bool playSFX, bool playVFX, bool networked)

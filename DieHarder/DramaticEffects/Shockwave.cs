@@ -4,6 +4,7 @@ using Il2CppRUMBLE.MoveSystem;
 using Il2CppRUMBLE.Players;
 using Il2CppRUMBLE.Players.Subsystems;
 using Il2CppRUMBLE.Pools;
+using Il2CppSteamworks;
 using MelonLoader;
 using System.Collections;
 using System.Collections.Generic;
@@ -17,6 +18,7 @@ namespace DieHarder
         public PlayerController DamagedPlayer;
 
         public bool HowardInvolved = false;
+        public float Drama = 1f;
 
         public GameObject ForceField;
         public Renderer ForceFieldRenderer;
@@ -30,12 +32,14 @@ namespace DieHarder
 
         public float Timer = 0f;
 
-        void Start()
+        public void SetUp()
         {
-            CreateForceField();
-            CreateDust();
-            CreateHitEffect();
-            PlayAudio();
+            if (Drama >= 0.6f)
+                CreateDust();
+            if (Drama >= 1.3f)
+                CreateHitEffect();
+            CreateForceField(Drama < 1.6f);
+            Core.Instance.PlayBlendedAudio(DamagedPlayer.GetChest().position, false, Drama);
         }
 
         void Update()
@@ -69,21 +73,22 @@ namespace DieHarder
                 if (Timer > 3f) GameObject.Destroy(ForceField);
             }
 
-            if (Timer > 10f)
-            {
-                AudioManager.SilenceAudioAfter(Core.ImpactAudioSource, 0f);
-            }
-
             if (Timer > 11f)
             {
+                foreach (StructureKillStorage structureKillStorage in Core.Instance.StructureKillStorages)
+                {
+                    structureKillStorage.Kill();
+                }
+                Core.Instance.StructureKillStorages.Clear();
+                StructureStorage.KillDelayed.Clear();
                 GameObject.Destroy(gameObject);
             }
 
-            if (Timer <= 10f)
-            {
-                float fogReturn = Mathf.Lerp(10000f, Impact.FogEndDistanceStorage, Timer / 10f);
-                RenderSettings.fogEndDistance = Mathf.Clamp(fogReturn, Impact.FogEndDistanceStorage, 10000f);
-            }
+            //if (Timer <= 10f)
+            //{
+            //    float fogReturn = Mathf.Lerp(10000f, Impact.FogEndDistanceStorage, Timer / 10f);
+            //    RenderSettings.fogEndDistance = Mathf.Clamp(fogReturn, Impact.FogEndDistanceStorage, 10000f);
+            //}
 
             if (ForceField == null) return;
             foreach (Ragdoll.RagdollPool pool in Ragdoll.RagdollPools.Values)
@@ -99,20 +104,23 @@ namespace DieHarder
                         if (ragdoll.Chest.GetComponent<Rigidbody>().velocity.magnitude < 0.3f)
                         {
                             Vector3 shockwavePosOffset = new Vector3(ForceField.transform.position.x, -1f, ForceField.transform.position.z);
-                            ragdoll.AddVelocity((ragdoll.Chest.position - shockwavePosOffset).normalized * 40f);
+                            ragdoll.AddVelocity((ragdoll.Chest.position - shockwavePosOffset).normalized * 40f * Drama);
                         }
                     }
                 }
             }
         }
 
-        public void CreateForceField()
+        public void CreateForceField(bool invisible = false)
         {
             ForceField = GameObject.CreatePrimitive(PrimitiveType.Sphere);
             ForceField.transform.SetParent(transform, false);
             ForceField.GetComponent<SphereCollider>().enabled = false;
             ForceFieldRenderer = ForceField.GetComponent<Renderer>();
-            ForceFieldRenderer.material = new Material(Core.Instance.ShockwaveShader);
+            if (!invisible)
+                ForceFieldRenderer.material = new Material(Core.Instance.ShockwaveShader);
+            else
+                ForceFieldRenderer.enabled = false;
         }
 
         public void CreateDust()
@@ -155,12 +163,6 @@ namespace DieHarder
         {
             yield return new WaitForSeconds(0.1f);
             phm.SetDamage(15f);
-        }
-
-        public void PlayAudio()
-        {
-            Core.ImpactAudioSource.volume = ModUISettings.DramaticEffectsVolume;
-            Core.ImpactAudioSource.Play();
         }
     }
 }

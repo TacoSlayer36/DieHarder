@@ -1,25 +1,16 @@
 ﻿using DieHarder.DramaticEffects;
-using Il2CppLiv.Lck.Smoothing;
-using Il2CppLiv.Lck.Tablet;
-using Il2CppPlayFab.ClientModels;
 using Il2CppRUMBLE.Combat.ShiftStones;
 using Il2CppRUMBLE.Managers;
 using Il2CppRUMBLE.Players;
-using Il2CppRUMBLE.Players.Comfort;
 using Il2CppRUMBLE.Players.Scaling;
 using Il2CppRUMBLE.Players.Subsystems;
-using Il2CppRUMBLE.Recording.LCK;
-using Il2CppRUMBLE.Recording.LCK.Extensions;
-using Il2CppRUMBLE.Settings;
+using Il2CppRUMBLE.Pools;
 using Il2CppRUMBLE.Utilities;
-using Liv.Lck.Smoothing;
 using MelonLoader;
-using RumbleModdingAPI;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
-using static MelonLoader.MelonLogger;
 
 namespace DieHarder
 {
@@ -32,6 +23,16 @@ namespace DieHarder
         public GameObject SphereBackground;
 
         public PlayerVisualsClone DamagedPlayer;
+        PlayerHaptics PlayerHaptics = PlayerManager.instance.localPlayer.Controller.PlayerHaptics;
+
+        public float Drama = 1f;
+
+        bool playedRumbleAudio = false;
+        AudioSource activeRumbleAudio;
+
+        private bool frozen = false;
+        private float waitTime = 0.5f;
+        private float waitedTime = 0f;
 
         public bool LivPlayersActive = true;
 
@@ -78,10 +79,40 @@ namespace DieHarder
 
         void Update()
         {
-            FreezeCameras();
+            if (frozen)
+            {
+                waitedTime += Time.deltaTime;
+                runRumbleEffect();
+            }
+            freezeCameras();
         }
 
-        public void FreezeCameras()
+        void runRumbleEffect()
+        {
+            if (waitTime <= 0.8f) return;
+
+            if (!playedRumbleAudio && waitedTime >= 0.3f)
+            {
+                playedRumbleAudio = true;
+                activeRumbleAudio = RumbleModdingAPI.RMAPI.AudioManager.PlaySound(Core.Buildup, DamagePos)?.AudioSource;
+                if (activeRumbleAudio != null) Core.RemoveAudioFalloff(activeRumbleAudio);
+            }
+
+            float t = waitedTime / waitTime;
+            float strength = Mathf.Clamp01(t);
+
+            if (t <= 0.8)
+            {
+                strength = Mathf.Pow(strength, 2f);
+                PlayerHaptics.AddHapticsSignal(strength, strength, strength);
+            }
+            if (t > 0.9)
+            {
+                activeRumbleAudio?.Stop();
+            }
+        }
+
+        void freezeCameras()
         {
             if (!IsAnimationRunning) return;
 
@@ -97,7 +128,9 @@ namespace DieHarder
                 foreach (PlayerVisualsClone playerSilhouette in Core.Instance.PlayerSilhouettes.Values)
                 {
                     if (playerSilhouette.Camera != null)
+                    {
                         playerSilhouette.Camera.transform.rotation = PlayerManager.Instance.LocalPlayer.Controller.GetCamera().transform.rotation;
+                    }
                 }
             }
         }
@@ -140,6 +173,7 @@ namespace DieHarder
                 playerSilhouette.CopyPose();
                 playerSilhouette.Visuals.SetActive(true);
                 if (playerSilhouette.Camera != null) playerSilhouette.Camera.enabled = true;
+                if (playerSilhouette.AudioListener != null) playerSilhouette.AudioListener.enabled = true;
             }
 
             // Create Howard silhouette if necessary
@@ -162,40 +196,53 @@ namespace DieHarder
             CreateSphereBackground();
 
             // Play pre-impact sound
-            Core.PreImpactAudioSource.volume = ModUISettings.DramaticEffectsVolume;
-            Core.PreImpactAudioSource.Play();
-            MelonCoroutines.Start(AudioManager.SilenceAudioAfter(Core.PreImpactAudioSource, (ModUISettings.ImpactFrameDuration - 170) / 1000f));
+            Core.Instance.PlayBlendedAudio(DamagePos, true, Drama);
 
             // ---- FREEZE ----
-            yield return new WaitForSeconds(ModUISettings.ImpactFrameDuration / 1000f);
+            if (ModUISettings.VariableEffects <= 0)
+            {
+                waitTime = ModUISettings.ImpactFrameDuration / 1000f;
+            }
+            else
+            {
+                waitTime = 0.5f * Mathf.Pow(Drama, 1.7f);
+                waitTime = Mathf.Clamp(waitTime, 0f, 2f);
+            }
+
+            if (waitTime > 0)
+            {
+                frozen = true;
+                yield return new WaitForSeconds(waitTime);
+            }
+
+            frozen = false;
 
             // Create shockwave
             bool howardDied = false;
             if (HowardInvolved && Core.Instance.Howard != null && Core.Instance.Howard.currentHp == 0) howardDied = true;
 
             if (!HowardInvolved || (HowardInvolved && !howardDied) || Core.Instance.HowardSmr == null)
-                Core.Instance.CreateShockwave(DamagePos, DamagedPlayer.ParentController);
+                Core.Instance.CreateShockwave(DamagePos, DamagedPlayer.ParentController, Drama);
             else
             {
-                Core.Instance.CreateShockwave(Core.Instance.HowardSmr.transform.position + Vector3.up * 0.8f, DamagedPlayer.ParentController);
+                Vector3 howardPos = Core.Instance.HowardSmr.transform.position + Vector3.up * 0.8f;
+                Core.Instance.CreateShockwave(howardPos, DamagedPlayer.ParentController, 1f, true);
             }
+
+            // Break killing structure
+            //InvolvedStructure?.StructureComponent?.Kill(InvolvedStructure.Velocity, true, true);
 
             // Create ragdoll
             if (!HowardInvolved || (HowardInvolved && !howardDied))
-                Core.Instance.CreateRagdollIfNecessary(DamagedPlayer.ParentController);
+                Core.Instance.CreateRagdollIfNecessary(DamagedPlayer.ParentController, null, Drama);
 
             // Flash the screen again
             ScreenFlash.CreateScreenFlash(PlayerManager.Instance.LocalPlayer.Controller.GetCamera().transform, LayerMask.NameToLayer("PlayerController"));
 
             // Shake the camera
-            PlayerHaptics ph = PlayerManager.instance.localPlayer.Controller.PlayerHaptics;
-            if (ModUISettings.DramaticEffectsScreenShake == 2)
+            if (ModUISettings.DramaticEffectsHaptics)
             {
-                ph.AddHapticsSignal(10f, 10f, 10f);
-            }
-            else if (ModUISettings.DramaticEffectsScreenShake == 1)
-            {
-                ph.AddHapticsSignal(ph.comfortSettings.ControllerShakeStrength, ph.comfortSettings.ControllerShakeStrength, ph.comfortSettings.CameraShakeStrength);
+                PlayerHaptics.AddHapticsSignal(1f, 1f, 1f);
             }
 
             // End
@@ -218,13 +265,17 @@ namespace DieHarder
                 foreach (StructureKillStorage structureKillStorage in Core.Instance.StructureKillStorages)
                 {
                     structureKillStorage.Kill();
-                    Core.Instance.StructureKillStorages.Clear();
                 }
+                Core.Instance.StructureKillStorages.Clear();
+                StructureStorage.KillDelayed.Clear();
             }
             else
             {
-                StructureKillRoutine = MelonCoroutines.Start(StructureKillStorage.C_KillStructuresFromShockwave());
+                if (Core.Instance?.ActiveShockwave?.ForceField != null)
+                    StructureKillRoutine = MelonCoroutines.Start(StructureKillStorage.C_KillStructuresFromShockwave());
             }
+
+            activeRumbleAudio?.Stop();
 
             ClearPlayerSilhouettes();
             ClearStructureSilhouettes();
@@ -258,7 +309,7 @@ namespace DieHarder
             if (SphereBackground != null)
                 GameObject.Destroy(SphereBackground);
 
-            if (strong)
+            //if (strong)
             {
                 if (FogEndDistanceStorage != -1)
                 RenderSettings.fogEndDistance = FogEndDistanceStorage;
@@ -311,10 +362,12 @@ namespace DieHarder
         {
             foreach (PlayerVisualsClone playerSilhouette in InvolvedPlayers)
             {
-                if (playerSilhouette.Camera != null)
-                    playerSilhouette.Camera.enabled = false;
                 if (playerSilhouette != null)
                 {
+                    if (playerSilhouette.Camera != null)
+                        playerSilhouette.Camera.enabled = false;
+                    if (playerSilhouette.AudioListener != null)
+                        playerSilhouette.AudioListener.enabled = true;
                     if (playerSilhouette.Visuals != null)
                         playerSilhouette.Visuals.SetActive(false);
                 }
@@ -344,6 +397,7 @@ namespace DieHarder
         public Transform LIV;
         public ShiftStone[] ShiftStones = { null, null };
         public Camera Camera = null;
+        public AudioListener AudioListener = null;
 
         public VisualsType Type = VisualsType.Silhouette;
         public enum VisualsType
@@ -365,7 +419,7 @@ namespace DieHarder
             }
         }
 
-        public void Setup(GameObject setupObject = null)
+        public void SetUp(GameObject setupObject = null)
         {
             if (setupObject == null) setupObject = gameObject;
             Visuals = setupObject;
@@ -422,6 +476,9 @@ namespace DieHarder
                 Camera.depth = -10;
                 Camera.enabled = false;
                 Camera.cullingMask = 1 << Core.Instance.VisualLayer;
+
+                AudioListener = Camera.gameObject.AddComponent<AudioListener>();
+                AudioListener.enabled = false;
             }
             GameObject.Destroy(Visuals.transform.GetChild(2)?.gameObject);
         }
@@ -488,9 +545,9 @@ namespace DieHarder
                 ShiftStones[1].transform.localScale *= (ParentController.assignedPlayer.Data.PlayerMeasurement.ArmSpan / 1.5f);
             }
 
-            bool rockCamBeingUsed = Core.FindRockCamBeingUsed();
-
-            float isLocal = ParentController.controllerType == Il2CppRUMBLE.Players.ControllerType.Local && !rockCamBeingUsed ? 1f : 0f;
+            //bool rockCamBeingUsed = Core.FindRockCamBeingUsed();
+            
+            float isLocal = ParentController.controllerType == Il2CppRUMBLE.Players.ControllerType.Local ? 1f : 0f;
             smr.material.SetFloat("_IsLocal", isLocal);
 
             List<Transform> parentBones = ParentController.GetBones()

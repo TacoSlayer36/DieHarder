@@ -8,6 +8,7 @@
 		<Reference Include="C:\Program Files (x86)\Steam\steamapps\common\RUMBLE\MelonLoader\**\*.dll" Private="false" />
 		<None Remove="assets\AssetBundles - Shortcut.lnk" />
 		<None Remove="assets\dieharder" />
+		<None Remove="assets\diehardest" />
 		<EmbeddedResource Include="assets\dieharder" />
 		<PackageReference Include="BepInEx.AssemblyPublicizer.MSBuild" Version="0.4.3">
 			<PrivateAssets>all</PrivateAssets>
