@@ -9,6 +9,7 @@ using Il2CppRUMBLE.Players;
 using Il2CppRUMBLE.Players.Scaling;
 using Il2CppRUMBLE.Players.Subsystems;
 using Il2CppRUMBLE.Pools;
+using Il2CppRUMBLE.Utilities;
 using MelonLoader;
 using System;
 using System.Collections;
@@ -26,7 +27,9 @@ namespace DieHarder
     {
         private static void Postfix(ref PlayerVisuals __instance)
         {
-            MelonCoroutines.Start(_(__instance.parentController));
+            if (Core.ForceDisabled) return;
+
+            MelonCoroutines.Start(_(__instance?.parentController));
 
             static IEnumerator _(PlayerController player)
             {
@@ -41,6 +44,7 @@ namespace DieHarder
     {
         private static void Postfix()
         {
+            if (Core.ForceDisabled) return;
             Ragdoll.ReapplyVisualsFor(PlayerManager.Instance.LocalPlayer.Controller);
         }
     }
@@ -51,10 +55,15 @@ namespace DieHarder
     {
         private static void Prefix()
         {
-            if (Core.Instance.IsInMatch && MatchHandler.Instance?.CurrentMatchPhase == MatchHandler.MatchPhase.MatchStart)
+            if (Core.ForceDisabled) return;
+            try
             {
-                MelonCoroutines.Start(SetRoundHasEnded());
+                if (Core.Instance.IsInMatch && MatchHandler.Instance?.CurrentMatchPhase == MatchHandler.MatchPhase.MatchStart)
+                {
+                    MelonCoroutines.Start(SetRoundHasEnded());
+                }
             }
+            catch { }
         }
 
         static IEnumerator SetRoundHasEnded()
@@ -65,13 +74,16 @@ namespace DieHarder
         }
     }
 
-    [HarmonyPatch(typeof(MatchHandler), nameof(MatchHandler.ExecuteNextRound), new Type[] {  })]
+    [HarmonyPatch(typeof(MatchHandler), nameof(MatchHandler.ExecuteNextRound), new Type[] { })]
     public static class MatchHandler_ExecuteNextRound_Patch
     {
         private static void Postfix()
         {
+            if (Core.ForceDisabled) return;
+
             Core.Instance.HasRoundEnded = false;
-            if (ModUISettings.CleanupInMatches > 0)
+            Core.Instance.PlayersKilledToGutter.Clear();
+            if (Config.CleanupInMatches.Value > 0)
                 Ragdoll.ClearAllRagdolls();
             foreach (Player player in PlayerManager.Instance.AllPlayers)
             {
@@ -85,6 +97,8 @@ namespace DieHarder
     {
         private static void Postfix(ref PlayerScaling __instance)
         {
+            if (Core.ForceDisabled) return;
+
             if (__instance?.parentController == null) return;
 
             if (Ragdoll.RagdollPools.ContainsKey(__instance.parentController))
@@ -102,6 +116,8 @@ namespace DieHarder
     {
         private static bool Prefix(ref Structure __instance, ref Vector3 killVelocity, ref bool playSFX, ref bool playVFX, ref bool networked)
         {
+            if (Core.ForceDisabled) return true;
+
             try
             {
                 bool isAnimationRunning = Core.Instance.ActiveImpact != null && Core.Instance.ActiveImpact.IsAnimationRunning;
@@ -131,18 +147,24 @@ namespace DieHarder
         }
     }
 
-    [HarmonyPatch(typeof(PooledMonoBehaviour), nameof(PooledMonoBehaviour.ReturnToPool), new Type[] {  })]
+    [HarmonyPatch(typeof(PooledMonoBehaviour), nameof(PooledMonoBehaviour.ReturnToPool), new Type[] { })]
     public static class PooledMonoBehaviour_ReturnToPool_Patch
     {
         private static void Prefix(ref Structure __instance)
         {
-            if (Shockwave.Dusts == null || Shockwave.Dusts.Count == 0 || __instance?.gameObject == null) return;
+            if (Core.ForceDisabled) return;
 
-            if (Shockwave.Dusts.Contains(__instance.gameObject))
+            try
             {
-                __instance.gameObject.transform.localScale = Vector3.one;
-                Shockwave.Dusts.Remove(__instance.gameObject);
+                if (Shockwave.Dusts == null || Shockwave.Dusts.Count == 0 || __instance?.gameObject == null) return;
+
+                if (Shockwave.Dusts.Contains(__instance.gameObject))
+                {
+                    __instance.gameObject.transform.localScale = Vector3.one;
+                    Shockwave.Dusts.Remove(__instance.gameObject);
+                }
             }
+            catch { }
         }
     }
 
@@ -151,6 +173,8 @@ namespace DieHarder
     {
         private static void Postfix(ref PooledMonoBehaviour __result, ref Vector3 position)
         {
+            if (Core.ForceDisabled) return;
+
             if (__result.name == "ExplodeFinale_VFX")
             {
                 if (StructureStorage.GameStates.Count >= 3)
@@ -168,6 +192,8 @@ namespace DieHarder
     {
         private static void Postfix(ref PlayerShiftstoneSystem __instance)
         {
+            if (Core.ForceDisabled) return;
+
             if (Core.Instance.PlayerSilhouettes.TryGetValue(__instance.parentController, out PlayerVisualsClone playerVisualsClone))
             {
                 playerVisualsClone.UpdateShiftStones();
@@ -180,6 +206,8 @@ namespace DieHarder
     {
         private static void Postfix(ref PlayerShiftstoneSystem __instance)
         {
+            if (Core.ForceDisabled) return;
+
             if (Core.Instance.PlayerSilhouettes.TryGetValue(__instance.parentController, out PlayerVisualsClone playerVisualsClone))
             {
                 playerVisualsClone.UpdateShiftStones();
@@ -192,20 +220,41 @@ namespace DieHarder
     {
         private static void Prefix(ref PlayerHealth __instance, short newHealth, short previousHealth, bool useEffects)
         {
+            if (Core.ForceDisabled) return;
+
             try
             {
                 if (newHealth < previousHealth)
                 {
-                    Core.Instance.OnPlayerDamage(__instance.parentController, newHealth, previousHealth);
+                    Core.Instance.OnPlayerDamage(__instance?.parentController, newHealth, previousHealth);
 
                     if (newHealth <= 0)
+                    {
                         Core.Instance.OnPlayerHealthDepleted(__instance);
+                    }
                 }
             }
-            catch
+            catch (Exception e)
             {
-                return;
+                Debug.Log(e.Message, false, 2);
+                Debug.Log(System.Environment.StackTrace);
             }
+        }
+    }
+
+    [HarmonyPatch(typeof(KillPlayerOnCollision), nameof(KillPlayerOnCollision.AttemptKillPlayer), new Type[] { typeof(Transform) })]
+    public static class KillPlayerOnCollision_AttemptKillPlayer_Patch
+    {
+        private static void Prefix(Transform tr)
+        {
+            if (Core.ForceDisabled) return;
+
+            try
+            {
+                Core.Instance.PlayersKilledToGutter.Add(tr.root.GetComponent<PlayerController>());
+            }
+            catch
+            { }
         }
     }
 

@@ -4,7 +4,6 @@ using Il2CppRUMBLE.Managers;
 using Il2CppRUMBLE.Players;
 using Il2CppRUMBLE.Players.Scaling;
 using Il2CppRUMBLE.Players.Subsystems;
-using Il2CppRUMBLE.Pools;
 using Il2CppRUMBLE.Utilities;
 using MelonLoader;
 using System.Collections;
@@ -50,19 +49,20 @@ namespace DieHarder
 
         public static Color GetColorFromSetting(string colorString, bool isPrimary)
         {
-            if (colorString == "match")
+            if (colorString.ToLower() == "match")
             {
-                Core.MatchResult matchResult = Core.Instance.GetMatchResult();
+                Core.MatchResult matchResult = Core.Instance.GetMatchResultEdgeCase();
                 Color color;
 
                 switch (matchResult)
                 {
                     case Core.MatchResult.Won: color = Color.green; break;
                     case Core.MatchResult.Lost: color = Color.red; break;
-                    default: color = Color.yellow; break;
+                    case Core.MatchResult.Tied: color = Color.yellow; break;
+                    default: color = Color.gray; break;
                 }
 
-                if (!isPrimary && ModUISettings.PrimaryEffectColor == "match" && ModUISettings.SecondaryEffectColor == "match")
+                if (!isPrimary && Config.PrimaryEffectColor.Value == "match" && Config.SecondaryEffectColor.Value == "match")
                     color = new Color(color.r * 0.8f, color.g * 0.8f, color.b * 0.8f);
                 return color;
             }
@@ -94,7 +94,7 @@ namespace DieHarder
             if (!playedRumbleAudio && waitedTime >= 0.3f)
             {
                 playedRumbleAudio = true;
-                activeRumbleAudio = RumbleModdingAPI.RMAPI.AudioManager.PlaySound(Core.Buildup, DamagePos)?.AudioSource;
+                activeRumbleAudio = AudioManager.PlaySound(Core.Buildup, DamagePos)?.AudioSource;
                 if (activeRumbleAudio != null) Core.RemoveAudioFalloff(activeRumbleAudio);
             }
 
@@ -182,14 +182,14 @@ namespace DieHarder
                 SkinnedMeshRenderer howardSmr = Core.Instance.HowardSmr;
                 if (howardSmr != null)
                 {
-                    if (ModUISettings.PrimaryEffectColor.ToLower() != "none")
+                    if (Config.PrimaryEffectColor.Value.ToLower() != "none")
                         howardSmr.material = Core.Instance.PrimarySilhouetteMat;
                     howardSmr.gameObject.layer = Core.Instance.VisualLayer;
                 }
             }
 
             // Create structure silhouette
-            if (ModUISettings.IncludeStructureInImpact && InvolvedStructure != null)
+            if (Config.IncludeStructureInImpact.Value && InvolvedStructure != null)
                 CreateStructureSilhouette(InvolvedStructure);
 
             // Create background
@@ -199,9 +199,9 @@ namespace DieHarder
             Core.Instance.PlayBlendedAudio(DamagePos, true, Drama);
 
             // ---- FREEZE ----
-            if (ModUISettings.VariableEffects <= 0)
+            if (Config.VariableEffects.Value <= 0)
             {
-                waitTime = ModUISettings.ImpactFrameDuration / 1000f;
+                waitTime = Config.ImpactFrameDuration.Value / 1000f;
             }
             else
             {
@@ -240,7 +240,7 @@ namespace DieHarder
             ScreenFlash.CreateScreenFlash(PlayerManager.Instance.LocalPlayer.Controller.GetCamera().transform, LayerMask.NameToLayer("PlayerController"));
 
             // Shake the camera
-            if (ModUISettings.DramaticEffectsHaptics)
+            if (Config.DramaticEffectsHaptics.Value)
             {
                 PlayerHaptics.AddHapticsSignal(1f, 1f, 1f);
             }
@@ -257,6 +257,7 @@ namespace DieHarder
         public void CancelAnimation(bool strong = true)
         {
             IsAnimationRunning = false;
+            Core.LastDamagedPlayer = null;
 
             if (strong)
             {
@@ -346,7 +347,7 @@ namespace DieHarder
 
             foreach (Renderer r in newStructureSilhouette.GetComponentsInChildren<Renderer>())
             {
-                if (ModUISettings.PrimaryEffectColor.ToLower() != "none")
+                if (Config.PrimaryEffectColor.Value.ToLower() != "none")
                 {
                     r.SetMaterial(Core.Instance.PrimarySilhouetteMat);
                     r.materials = new Material[1] { Core.Instance.PrimarySilhouetteMat };
@@ -357,6 +358,28 @@ namespace DieHarder
             newStructureSilhouette.name = "StructureSilhouette";
 
             StructureSilhouettes.Add(newStructureSilhouette);
+        }
+
+        public static PlayerVisualsClone CreatePlayerSilhouette(PlayerController player)
+        {
+            if (player == null) return null;
+
+            if (Core.Instance.PlayerSilhouettes.TryGetValue(player, out PlayerVisualsClone ps))
+            {
+                ps?.ReapplyVisuals();
+                return ps;
+            }
+
+            GameObject newClone = GameObject.Instantiate(player.PlayerVisuals.gameObject);
+            PlayerVisualsClone playerSilhouette = newClone.AddComponent<PlayerVisualsClone>();
+            playerSilhouette.ParentController = player;
+            playerSilhouette.SetUp();
+            newClone.SetActive(false);
+            newClone.transform.SetParent(Core.Instance.ModObject_Silhouettes.transform);
+            newClone.name = HelperFunctions.SanitizeString(player.assignedPlayer.Data.GeneralData.PublicUsername) + "Silhouette";
+
+            Core.Instance.PlayerSilhouettes[player] = playerSilhouette;
+            return playerSilhouette;
         }
         public void ClearPlayerSilhouettes()
         {
@@ -385,7 +408,8 @@ namespace DieHarder
             SphereBackground.GetComponent<Renderer>().material = Core.Instance.SecondarySilhouetteMat;
             SphereBackground.layer = Core.Instance.VisualLayer;
             SphereBackground.transform.SetParent(Core.Instance.ModObject_DramaticEffects.transform);
-            SphereBackground.transform.localScale = Vector3.one * 200f;
+            SphereBackground.transform.localScale = Vector3.one * 400f;
+            SphereBackground.transform.position = PlayerManager.Instance.LocalPlayer.Controller.GetCamera().transform.position;
         }
     }
 
@@ -444,12 +468,13 @@ namespace DieHarder
                     if (Type == VisualsType.Silhouette)
                     {
                         m.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-                        if (ModUISettings.PrimaryEffectColor.ToLower() != "none")
+                        if (Config.PrimaryEffectColor.Value.ToLower() != "none")
                             m.sharedMaterial = Core.Instance.PrimarySilhouetteMat;
                         m.gameObject.layer = Core.Instance.VisualLayer;
 
-                        float isLocal = ParentController.ControllerType == Il2CppRUMBLE.Players.ControllerType.Local ? 1f : 0f;
+                        int isLocal = ParentController.ControllerType == Il2CppRUMBLE.Players.ControllerType.Local ? 1 : 0;
                         m.material.SetFloat("_IsLocal", isLocal);
+                        m.material.SetInt("_IsLocalPlayer", isLocal);
                     }
                 }
             }
@@ -519,14 +544,14 @@ namespace DieHarder
             if (Visuals == null) return;
 
             SkinnedMeshRenderer smr = Visuals.GetComponentInChildren<SkinnedMeshRenderer>();
-            if (ModUISettings.PrimaryEffectColor.ToLower() != "none")
+            if (Config.PrimaryEffectColor.Value.ToLower() != "none")
                 smr.material = Core.Instance.PrimarySilhouetteMat;
             else if (Ragdoll.PlayerMats.ContainsKey(ParentController))
                 ReapplyVisuals();
 
             if (ShiftStones[0] != null)
             {
-                if (ModUISettings.PrimaryEffectColor.ToLower() != "none")
+                if (Config.PrimaryEffectColor.Value.ToLower() != "none")
                     ShiftStones[0].GetComponentInChildren<MeshRenderer>().material = Core.Instance.PrimarySilhouetteMat;
                 ShiftStones[0].transform.position = ParentController.PlayerShiftstones.shiftStoneSockets[0].assignedShifstone.transform.position;
                 ShiftStones[0].transform.rotation = ParentController.PlayerShiftstones.shiftStoneSockets[0].assignedShifstone.transform.rotation;
@@ -536,7 +561,7 @@ namespace DieHarder
             }
             if (ShiftStones[1] != null)
             {
-                if (ModUISettings.PrimaryEffectColor.ToLower() != "none")
+                if (Config.PrimaryEffectColor.Value.ToLower() != "none")
                     ShiftStones[1].GetComponentInChildren<MeshRenderer>().material = Core.Instance.PrimarySilhouetteMat;
                 ShiftStones[1].transform.position = ParentController.PlayerShiftstones .shiftStoneSockets[1].assignedShifstone.transform.position;
                 ShiftStones[1].transform.rotation = ParentController.PlayerShiftstones.shiftStoneSockets[1].assignedShifstone.transform.rotation;
@@ -547,8 +572,9 @@ namespace DieHarder
 
             //bool rockCamBeingUsed = Core.FindRockCamBeingUsed();
             
-            float isLocal = ParentController.controllerType == Il2CppRUMBLE.Players.ControllerType.Local ? 1f : 0f;
+            int isLocal = ParentController.controllerType == Il2CppRUMBLE.Players.ControllerType.Local ? 1 : 0;
             smr.material.SetFloat("_IsLocal", isLocal);
+            smr.material.SetInt("_IsLocalPlayer", isLocal);
 
             List<Transform> parentBones = ParentController.GetBones()
                 .Select(bone => bone.Transform)

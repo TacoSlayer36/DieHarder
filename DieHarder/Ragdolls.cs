@@ -24,6 +24,7 @@ namespace DieHarder
     {
         public static Dictionary<PlayerController, RagdollPool> RagdollPools = new();
         public static Dictionary<PlayerController, Material> PlayerMats = new();
+        public static Dictionary<Renderer, Material> MiscMats = new();
         public static Material LocalHeadClippedMat = null;
         public static List<PlayerController> ghosts = new();
 
@@ -51,9 +52,19 @@ namespace DieHarder
             RagdollPool ownerPool = FindOrCreateRagdollPool(player);
             newRagdoll = ownerPool.FetchRagdoll();
 
-            bool launchFromGutter = Core.Instance.CurrentScene == "Map0" && newRagdoll.Chest.position.y <= -3 && newRagdoll.Chest.position.y >= -8;
-            bool isPerDamage = Core.Instance.IsInMatch && ModUISettings.RagdollsInMatches >= 4 || !Core.Instance.IsInMatch && ModUISettings.RagdollsOutsideMatches >= 3;
+            if (Core.Instance.CurrentScene == "Map0")
+            {
+                Vector3 pos = player.GetStandingPosition();
+                float lateralDist = new Vector3(pos.x, 0f, pos.z).magnitude;
+                if (player.GetStandingPosition().y <= -0.09f || lateralDist >= 12f)
+                    Core.Instance.PlayersKilledToGutter.Add(player);
+            }
+
+            bool launchFromGutter = Core.Instance.PlayersKilledToGutter.Contains(player);
+
+            bool isPerDamage = Core.Instance.IsInMatch && (int)Config.RagdollsInMatches.Value >= 4 || !Core.Instance.IsInMatch && (int)Config.RagdollsOutsideMatches.Value >= 3;
             newRagdoll.Drama = drama;
+            float dramaToUse = launchFromGutter ? 1f : drama;
 
             if (killingStructure != null)
             {
@@ -62,22 +73,22 @@ namespace DieHarder
             else if (!launchFromGutter)
             {
                 Vector3 vel = new Vector3(Random.RandomRange(-15, 15), Random.RandomRange(23, 29), Random.RandomRange(-15, 15));
-                newRagdoll.AddVelocity(vel);
+                newRagdoll.AddVelocity(vel * dramaToUse);
             }
             else
             {
                 Vector3 launchLateral = new Vector3(newRagdoll.Chest.position.x, 0f, newRagdoll.Chest.position.z).normalized * -35f;
-                if (isPerDamage) launchLateral *= 0.85f;
+                //if (isPerDamage) launchLateral *= 0.85f;
                 Vector3 launchDir = launchLateral + Vector3.up * Random.RandomRange(90f, 150f) * 0.7f;
-                newRagdoll.AddVelocity(launchDir * drama);
+                newRagdoll.AddVelocity(launchDir);
             }
 
             if (isPerDamage)
             {
                 newRagdoll.AddVelocity(newRagdoll.Chest.GetComponentInChildren<Rigidbody>().velocity);
                 Vector3 vel = new Vector3(Random.RandomRange(-15, 15), Random.RandomRange(23, 29), Random.RandomRange(-15, 15));
-                if (launchFromGutter) vel *= 0.85f;
-                newRagdoll.AddVelocity(vel * drama);
+                vel *= 0.85f;
+                newRagdoll.AddVelocity(vel * dramaToUse);
             }
 
             return newRagdoll;
@@ -179,7 +190,7 @@ namespace DieHarder
                 rb.includeLayers = new LayerMask().AddToMask(layers);
                 rb.includeLayers = rb.includeLayers | Core.Instance.PhysicsLayerMask;
                 rb.gameObject.tag = "Audio_Stone";
-                if (!Core.Prefs_LegacyRagdollJank.Value)
+                if (!Config.LegacyRagdollJank.Value)
                 rb.excludeLayers = LayerMask.GetMask("Move", "PlayerController", "PlayerHitbox", "PlayerPhysics", "PlayerPhysicsTransform", "PlayerFeet", "PlayerOnPlayerInteraction");
                 rb.gameObject.layer = Core.Instance.PhysicsLayer;
                 if (rb.name.Contains("Foot") || rb.name.Contains("Head") || rb.name.Contains("Hand") || rb.name.Contains("Spine_A"))
@@ -192,7 +203,7 @@ namespace DieHarder
             CacheOriginalJointData();
             CopyPose();
 
-            if (Core.Prefs_LegacyRagdollJank.Value)
+            if (Config.LegacyRagdollJank.Value)
             {
                 float mult = Random.RandomRange(0.5f, 1.5f);
                 if (Random.RandomRangeInt(0, 2) == 0)
@@ -274,7 +285,7 @@ namespace DieHarder
         {
             foreach (BoneRef boneRef in BoneRefs)
             {
-                if (!IsJanky || !Core.Prefs_LegacyRagdollJank.Value)
+                if (!IsJanky || !Config.LegacyRagdollJank.Value)
                 {
                     boneRef.VisualBone.transform.position = boneRef.RagdollBone.transform.position;
                     boneRef.VisualBone.transform.rotation = boneRef.RagdollBone.transform.rotation;
@@ -335,7 +346,7 @@ namespace DieHarder
 
             ResetAnchors();
 
-            if ((Core.Instance.IsInMatch && ModUISettings.RagdollsInMatches == 4) || (!Core.Instance.IsInMatch && ModUISettings.RagdollsOutsideMatches == 3))
+            if ((Core.Instance.IsInMatch && (int)Config.RagdollsInMatches.Value == 4) || (!Core.Instance.IsInMatch && (int)Config.RagdollsOutsideMatches.Value == 3))
             {
                 MelonCoroutines.Start(C_SetLayersDelayed());
             }
@@ -359,7 +370,7 @@ namespace DieHarder
                     CacheOriginalJointData();
 
                 Vector3 newAnchorPos = joint.transform.InverseTransformPoint(boneAnchorPosStorage[joint].transform.position);
-                if (!Core.Prefs_LegacyRagdollJank.Value)
+                if (!Config.LegacyRagdollJank.Value)
                 {
                     joint.connectedAnchor = originalBoneAnchors[joint] * (ragdollBone.lossyScale.x / 100f);
                 }
@@ -436,7 +447,7 @@ namespace DieHarder
 
         public static void Ghostify(PlayerController player)
         {
-            if (!ModUISettings.EnableGhostification) return;
+            if (!Config.EnableGhostification.Value) return;
 
             SkinnedMeshRenderer smr = player.PlayerVisuals.GetComponentInChildren<SkinnedMeshRenderer>();
             smr.material = Core.Instance.GhostMat;
@@ -445,6 +456,16 @@ namespace DieHarder
             
             float isLocal = player.controllerType == Il2CppRUMBLE.Players.ControllerType.Local ? 1f : 0f;
             smr.material.SetFloat("_IsLocal", isLocal);
+
+            foreach (Renderer r in player.PlayerVisuals.GetComponentsInChildren<Renderer>(true))
+            {
+                if (r.transform.parent.GetComponent<ShiftStone>() != null)
+                {
+                    if (!MiscMats.ContainsKey(r))
+                        MiscMats[r] = r.material;
+                    r.material = Core.Instance.GhostMat;
+                }
+            }
 
             ghosts.Add(player);
         }
@@ -465,6 +486,14 @@ namespace DieHarder
                 if (PlayerMats[player] == null) return;
 
                 smr.material = PlayerMats[player];
+            }
+
+            foreach (Renderer r in player.PlayerVisuals.GetComponentsInChildren<Renderer>(true))
+            {
+                if (MiscMats.ContainsKey(r))
+                {
+                    r.material = MiscMats[r];
+                }
             }
 
             if (ghosts.Contains(player)) ghosts.Remove(player);
@@ -538,7 +567,7 @@ namespace DieHarder
                 poolRagdoll.IsActive = true;
                 poolRagdoll.CopyPose();
 
-                if (Core.Prefs_LegacyRagdollJank.Value)
+                if (Config.LegacyRagdollJank.Value)
                 {
                     poolRagdoll.IsJanky = Random.RandomRangeInt(0, 30) == 0;
                     if (Random.RandomRangeInt(0, 10) == 0)
@@ -602,13 +631,13 @@ namespace DieHarder
                 if (Core.Instance.RagdollAudioClipsHard.Count > 0)
                 {
                     audioSource.clip = Core.Instance.RagdollAudioClipsHard[Random.RandomRangeInt(0, Core.Instance.RagdollAudioClipsHard.Count)];
-                    audioSource.volume = Mathf.Clamp01(relativeVel * 0.4f) * ModUISettings.RagdollSoundsVolume;
+                    audioSource.volume = Mathf.Clamp01(relativeVel * 0.4f) * Config.RagdollSoundsVolume.Value;
                 }
             }
             else
             {
                 audioSource.clip = Core.Instance.RagdollAudioClipsSoft[Random.RandomRangeInt(0, Core.Instance.RagdollAudioClipsSoft.Count)];
-                audioSource.volume = Mathf.Clamp01(relativeVel * 0.6f) * ModUISettings.RagdollSoundsVolume;
+                audioSource.volume = Mathf.Clamp01(relativeVel * 0.6f) * Config.RagdollSoundsVolume.Value;
             }
 
             audioSource.Play();
@@ -641,7 +670,7 @@ namespace DieHarder
                 isWhooshing = false;
             }
 
-            audioSource.volume = Mathf.Clamp01((rigidbody.velocity.magnitude - 1f) * 0.4f) * ModUISettings.RagdollSoundsVolume;
+            audioSource.volume = Mathf.Clamp01((rigidbody.velocity.magnitude - 1f) * 0.4f) * Config.RagdollSoundsVolume.Value;
         }
     }
 }

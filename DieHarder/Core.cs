@@ -1,7 +1,4 @@
-﻿using RumbleModdingAPI;
-using RumbleModUI;
-
-using MelonLoader;
+﻿using MelonLoader;
 using Il2CppRUMBLE.Pools;
 using System.Collections.Generic;
 using UnityEngine;
@@ -13,18 +10,16 @@ using Il2CppRUMBLE.Managers;
 using Il2CppRUMBLE.Interactions.InteractionBase;
 using Il2CppRUMBLE.Networking.MatchFlow;
 using Il2CppRUMBLE.Environment.Howard;
-using Il2CppRUMBLE.Recording.LCK;
-using System.IO;
-using System;
 using Il2CppRUMBLE.Audio;
 using static Il2CppRUMBLE.Audio.AudioCall;
-using AsmResolver.PE.DotNet.ReadyToRun;
-using System.Linq.Expressions;
+using System;
+using System.IO;
 
 [assembly: MelonInfo(typeof(DieHarder.Core), DieHarder.BuildInfo.Name, DieHarder.BuildInfo.Version, DieHarder.BuildInfo.Author)]
 [assembly: MelonGame("Buckethead Entertainment", "RUMBLE")]
 [assembly: MelonColor(255, 255, 248, 231)]
 [assembly: MelonAuthorColor(255, 255, 248, 231)]
+[assembly: MelonAdditionalDependencies("UIFramework")]
 
 namespace DieHarder
 {
@@ -32,7 +27,7 @@ namespace DieHarder
     {
         public const string Name = "DieHarder";
         public const string Author = "TacoSlayer36";
-        public const string Version = "2.0.7";
+        public const string Version = "2.0.9";
         public const string Description = "That death goes hard";
     }
 
@@ -42,6 +37,12 @@ namespace DieHarder
 
         public bool GlobalInit = false;
         public static Core Instance;
+
+        public static bool UIInit = false;
+
+        public const string PreferredVersion = "0.5.0.5";
+        public static bool ForceDisabled = false;
+
         public GameObject ModObject_Parent;
         public GameObject ModObject_Silhouettes;
         public GameObject ModObject_DramaticEffects;
@@ -49,10 +50,7 @@ namespace DieHarder
         public GameObject ModObject_DDOLParent;
         public GameObject ModObject_DDOLRagdoll => ModObject_DDOLParent.transform.GetChild(0).gameObject;
 
-        public static MelonPreferences_Category Prefs_Category;
-        public static MelonPreferences_Entry<bool> Prefs_DebugEnabled;
-        public static MelonPreferences_Entry<bool> Prefs_LegacyRagdollJank;
-        public static MelonPreferences_Entry<bool> Prefs_SmashBrosLaunch;
+        public AssetBundle AssetBundle;
 
         public static AudioCall PreImpactLight;
         public static AudioCall PreImpactMedium;
@@ -68,7 +66,7 @@ namespace DieHarder
         bool warnedAboutRagdollAudioDir = false;
         bool warnedAboutRagdollAudio = false;
 
-        public bool DebugEnabled => Prefs_DebugEnabled.Value;
+        public bool DebugEnabled => Config.DebugEnabled.Value;
 
         public enum MatchResult
         {
@@ -78,13 +76,17 @@ namespace DieHarder
             Tied = 3
         }
 
-        public string CurrentScene => RumbleModdingAPI.RMAPI.Calls.Scene.GetSceneName();
+        public string CurrentScene => UnityEngine.SceneManagement.SceneManager.GetActiveScene().name;
         public bool IsInMatch => CurrentScene.Contains("Map") && PlayerManager.Instance.AllPlayers.Count >= 2;
         public bool HasRoundEnded = false;
         public bool WasMatchEnd = false;
 
+        public List<PlayerController> PlayersKilledToGutter = new();
+
         public List<Pool<PooledMonoBehaviour>> StructurePools = new();
         public List<StructureKillStorage> StructureKillStorages = new();
+
+        public static PlayerController LastDamagedPlayer;
 
         public Impact ActiveImpact;
         public Shockwave ActiveShockwave;
@@ -114,7 +116,7 @@ namespace DieHarder
                     _primarySilhouetteMat = new Material(SilhouetteShader);
                     _primarySilhouetteMat.hideFlags = HideFlags.HideAndDontSave | HideFlags.DontUnloadUnusedAsset;
                 }
-                _primarySilhouetteMat.color = Impact.GetColorFromSetting(ModUISettings.PrimaryEffectColor, true);
+                _primarySilhouetteMat.color = Impact.GetColorFromSetting(Config.PrimaryEffectColor.Value, true);
                 return _primarySilhouetteMat;
             }
         }
@@ -128,7 +130,7 @@ namespace DieHarder
                     _secondarySilhouetteMat = new Material(SilhouetteShader);
                     _secondarySilhouetteMat.hideFlags = HideFlags.HideAndDontSave | HideFlags.DontUnloadUnusedAsset;
                 }
-                _secondarySilhouetteMat.color = Impact.GetColorFromSetting(ModUISettings.SecondaryEffectColor, false);
+                _secondarySilhouetteMat.color = Impact.GetColorFromSetting(Config.SecondaryEffectColor.Value, false);
                 return _secondarySilhouetteMat;
             }
         }
@@ -181,25 +183,37 @@ namespace DieHarder
 
         public override void OnLateInitializeMelon()
         {
+            if (Application.version != PreferredVersion)
+            {
+                ForceDisabled = true;
+                string error = $"DieHarder was made for a different version of RUMBLE ({PreferredVersion}). It has been disabled to prevent game-breaking bugs";
+                Debug.Log(error, false, 2);
+                MelonCoroutines.Start(delayedError(15f, error));
+                return;
+            }
+
             Instance = this;
-            UI.instance.UI_Initialized += OnUIInit;
-            RumbleModdingAPI.RMAPI.Actions.onMapInitialized += sceneReady;
+            MelonPreferences.OnPreferencesSaved.Subscribe(Config.OnMyPrefsSaved);
 
-            Prefs_Category = MelonPreferences.CreateCategory("DieHarder");
-            Prefs_LegacyRagdollJank = Prefs_Category.CreateEntry<bool>("LegacyRagdollJank", false);
-            Prefs_SmashBrosLaunch = Prefs_Category.CreateEntry<bool>("SmashBrosLaunch", false);
-            Prefs_DebugEnabled = Prefs_Category.CreateEntry<bool>("debug_mode_enabled", false);
+            if (!Directory.Exists(UserDataPath)) Directory.CreateDirectory(UserDataPath);
 
-            SilhouetteShader = RumbleModdingAPI.RMAPI.AssetBundles.LoadAssetFromStream<Shader>(this, "DieHarder.assets.dieharder", "SolidColorUnlit");
+            AssetBundle = AssetBundle.LoadFromMemory(HelperFunctions.LoadEmbeddedResource("DieHarder.assets.dieharder"));
+
+            SilhouetteShader = AssetBundle.LoadAsset<Shader>("SolidColorUnlit");
             SilhouetteShader.hideFlags = HideFlags.HideAndDontSave | HideFlags.DontUnloadUnusedAsset;
-            ShockwaveShader = RumbleModdingAPI.RMAPI.AssetBundles.LoadAssetFromStream<Shader>(this, "DieHarder.assets.dieharder", "Shockwave");
+
+            ShockwaveShader = AssetBundle.LoadAsset<Shader>("Shockwave");
             ShockwaveShader.hideFlags = HideFlags.HideAndDontSave | HideFlags.DontUnloadUnusedAsset;
-            GhostShader = RumbleModdingAPI.RMAPI.AssetBundles.LoadAssetFromStream<Shader>(this, "DieHarder.assets.dieharder", "Ghost");
+
+            GhostShader = AssetBundle.LoadAsset<Shader>("Ghost");
             GhostShader.hideFlags = HideFlags.HideAndDontSave | HideFlags.DontUnloadUnusedAsset;
 
             bool foundPreImpact = false;
             bool foundImpact = false;
             bool foundBuildup = false;
+
+            populateUserDataIfNeeded("effect_sounds");
+            populateUserDataIfNeeded("ragdoll_sounds");
 
             if (
             createAudioCall(ref PreImpactLight, "pre_impact", "-light") &&
@@ -219,17 +233,17 @@ namespace DieHarder
 
             bool createAudioCall(ref AudioCall audioCall, string fileName, string suffix)
             {
-                string path = UserDataPath + fileName + suffix + ".wav";
+                string path = UserDataPath + "/effect_sounds/" + fileName + suffix + ".wav";
                 if (File.Exists(path))
                 {
-                    audioCall = RumbleModdingAPI.RMAPI.AudioManager.CreateAudioCall(path, 1);
+                    audioCall = AudioManager.CreateAudioCall(path, 1);
                     return true;
                 }
 
-                path = UserDataPath + fileName + ".wav";
+                path = UserDataPath + "/effect_sounds/" + fileName + ".wav";
                 if (File.Exists(path))
                 {
-                    audioCall = RumbleModdingAPI.RMAPI.AudioManager.CreateAudioCall(path, 1);
+                    audioCall = AudioManager.CreateAudioCall(path, 1);
                     return true;
                 }
 
@@ -253,10 +267,57 @@ namespace DieHarder
                 Debug.Log("Could not find audio files for Buildup sound effect", false, 1);
                 warnedAboutBuildupAudio = true;
             }
+
+            MelonCoroutines.Start(checkForUI());
+            Config.SetUpUI();
+
+            static IEnumerator checkForUI()
+            {
+                yield return new WaitForFixedUpdate();
+                if (!UIInit)
+                {
+                    ForceDisabled = true;
+                    string error = $"Could not create UIFramework interface. Disabling DieHarder to prevent game-breaking bugs. Make sure you have the dependency installed";
+                    Debug.Log(error, false, 2);
+                    MelonCoroutines.Start(delayedError(15f, error));
+                }
+            }
+        }
+
+        static void populateUserDataIfNeeded(string folderName)
+        {
+            string effectSoundsDir = UserDataPath + $"/{folderName}/";
+            if (!Directory.Exists(effectSoundsDir))
+            {
+                Directory.CreateDirectory(effectSoundsDir);
+
+                var assembly = typeof(Core).Assembly;
+                var resourceNames = assembly.GetManifestResourceNames()
+                    .Where(r => r.StartsWith($"DieHarder.assets.{folderName}.", StringComparison.OrdinalIgnoreCase));
+
+                foreach (var resourceName in resourceNames)
+                {
+                    string fileName = resourceName.Substring($"DieHarder.assets.{folderName}.".Length);
+                    string outPath = Path.Combine(effectSoundsDir, fileName);
+
+                    using (var resourceStream = assembly.GetManifestResourceStream(resourceName))
+                    using (var fileStream = File.Create(outPath))
+                    {
+                        resourceStream.CopyTo(fileStream);
+                    }
+                }
+            }
+        }
+
+        static IEnumerator delayedError(float waitTime, string msg)
+        {
+            yield return new WaitForSeconds(waitTime);
+            Debug.Log(msg, false, 2);
         }
 
         public override void OnUpdate()
         {
+            if (ForceDisabled) return;
             if (!GlobalInit) return;
 
             if (DebugEnabled)
@@ -268,11 +329,14 @@ namespace DieHarder
 
                 if (Input.GetKey(KeyCode.LeftShift) && Input.GetKeyDown(KeyCode.T))
                 {
-                    Ragdoll raggy = Ragdoll.SpawnRagdoll(PlayerManager.Instance.localPlayer.Controller, FindClosestStructure(PlayerManager.Instance.LocalPlayer.Controller), AA_Drama);
-                    if (ModUISettings.CleanupOutsideMatches > 0)
+                    if (PlayerManager.Instance.LocalPlayer.Controller.PlayerSessionStateSystem.CurrentVRState == PlayerSessionStateSystem.VRState.Present)
                     {
-                        raggy.UndoGhostOnClear = true;
-                        raggy.ClearAfter(ModUISettings.CleanupOutsideMatches);
+                        Ragdoll raggy = Ragdoll.SpawnRagdoll(PlayerManager.Instance.localPlayer.Controller, FindClosestStructure(PlayerManager.Instance.LocalPlayer.Controller), AA_Drama);
+                        if (Config.CleanupOutsideMatches.Value > 0)
+                        {
+                            raggy.UndoGhostOnClear = true;
+                            raggy.ClearAfter(Config.CleanupOutsideMatches.Value);
+                        }
                     }
                 }
             }
@@ -280,6 +344,7 @@ namespace DieHarder
 
         public override void OnFixedUpdate()
         {
+            if (ForceDisabled) return;
             if (!GlobalInit) return;
 
             if (Time.timeSinceLevelLoad > 10f)
@@ -328,35 +393,27 @@ namespace DieHarder
             PlayerDamages.Clear();
         }
 
-        public IEnumerator C_SlowFixedUpdate()
-        {
-            while (true)
-            {
-                if (Time.timeSinceLevelLoad > 3f)
-                {
-                    bool anyRagdollsEnabled = false;
-                    foreach (Ragdoll.RagdollPool pool in Ragdoll.RagdollPools.Values)
-                        if (pool.AnyRagdollsEnabled) anyRagdollsEnabled = true;
-
-                    if (!anyRagdollsEnabled)
-                        Ragdoll.UnGhostifyAllGhosts();
-                }
-
-                yield return new WaitForSeconds(5f);
-            }
-        }
-
         public override void OnSceneWasUnloaded(int buildIndex, string sceneName)
         {
+            if (ForceDisabled) return;
+
             Impact.FogEndDistanceStorage = -1f;
             Ragdoll.PlayerMats.Clear();
             PlayerDamages.Clear();
+            LastDamagedPlayer = null;
+
+            foreach (var miscMat in Ragdoll.MiscMats)
+            {
+                if (miscMat.Key != null && miscMat.Key.material != null)
+                    miscMat.Key.material = miscMat.Value;
+            }
+            Ragdoll.MiscMats.Clear();
         }
 
         public override void OnSceneWasLoaded(int buildIndex, string sceneName)
         {
+            if (ForceDisabled) return;
             if (sceneName == "Loader") return;
-
 
             ModObject_Parent = new GameObject("DieHarder");
             ModObject_Silhouettes = new GameObject("Silhouettes");
@@ -371,15 +428,27 @@ namespace DieHarder
             PlayerSilhouettes.Clear();
 
             HasRoundEnded = false;
+            PlayersKilledToGutter.Clear();
 
             Ragdoll.RagdollPools.Clear();
             Ragdoll.LocalHeadClippedMat = null;
             ActiveImpact = null;
             ActiveShockwave = null;
 
-            if (sceneName == "Gym" && !GlobalInit)
+            if (sceneName == "Gym")
             {
-                RunGlobalInit();
+                MelonCoroutines.Start(slight_delay());
+
+                if (!GlobalInit)
+                    RunGlobalInit();
+            }
+            IEnumerator slight_delay()
+            {
+                yield return new WaitForSeconds(3f);
+
+                MelonCoroutines.Start(C_ListenForLandButton("FlatLand"));
+                MelonCoroutines.Start(C_ListenForLandButton("VoidLand"));
+                MelonCoroutines.Start(C_GrabHowardStuff());
             }
 
             if (Directory.Exists(RagdollAudioPath))
@@ -396,7 +465,7 @@ namespace DieHarder
                 {
                     foreach (var file in Directory.GetFiles(RagdollAudioPath))
                     {
-                        AudioClip newClip = RumbleModdingAPI.RMAPI.AudioManager.LoadWavFile(file);
+                        AudioClip newClip = AudioManager.LoadWavFile(file);
                         newClip.hideFlags = HideFlags.HideAndDontSave | HideFlags.DontUnloadUnusedAsset;
                         if (file.Contains("soft")) RagdollAudioClipsSoft.Add(newClip);
                         else RagdollAudioClipsHard.Add(newClip);
@@ -410,22 +479,11 @@ namespace DieHarder
             }
         }
 
-        void sceneReady(string _)
-        {
-            if (CurrentScene == "Gym")
-            {
-                MelonCoroutines.Start(C_ListenForLandButton("FlatLand"));
-                MelonCoroutines.Start(C_ListenForLandButton("VoidLand"));
-
-                MelonCoroutines.Start(C_GrabHowardStuff());
-            }
-        }
-
         private IEnumerator C_GrabHowardStuff()
         {
             yield return new WaitForSeconds(3f);
 
-            Howard = RumbleModdingAPI.RMAPI.GameObjects.Gym.INTERACTABLES.Howard.GetGameObject().GetComponentInChildren<Howard>();
+            Howard = GameObject.Find("INTERACTABLES/Howard").GetComponentInChildren<Howard>();
             SkinnedMeshRenderer howardSmr = Core.Instance.HowardSmr;
             if (howardSmr != null)
             {
@@ -455,7 +513,8 @@ namespace DieHarder
 
         public void RunGlobalInit()
         {
-            //MelonCoroutines.Start(C_SlowFixedUpdate());
+            if (ForceDisabled) return;
+
             fetchStructurePools();
 
             //LCKTabletUtility lckTabletUtility = PlayerManager.Instance.LocalPlayer.Controller.PlayerLIV.LckTablet;
@@ -464,7 +523,7 @@ namespace DieHarder
             //    LIVPlayersInstance = lckTabletUtility.firstPersonCamera._camera.GetUniversalAdditionalCameraData().scriptableRenderer.rendererFeatures[0];
             //}
 
-            ModObject_DDOLParent = GameObject.Instantiate(RumbleModdingAPI.RMAPI.AssetBundles.LoadAssetFromStream<GameObject>(this, "DieHarder.assets.dieharder", "DieHarderDDOL"));
+            ModObject_DDOLParent = GameObject.Instantiate(AssetBundle.LoadAsset<GameObject>("DieHarderDDOL"));
             ModObject_DDOLParent.name = "DieHarderDDOL";
             GameObject.DontDestroyOnLoad(ModObject_DDOLParent);
             ModObject_DDOLParent.transform.GetChild(0).gameObject.SetActive(false);
@@ -472,7 +531,7 @@ namespace DieHarder
             GlobalInit = true;
         }
 
-        public void DetermineIfMatchEnd()
+        public void DetermineIfMatchEnd(PlayerController damagedPlayer = null)
         {
             bool isMatchEnd = false;
             if (MatchHandler.instance == null)
@@ -482,13 +541,14 @@ namespace DieHarder
             }
 
             int currentRound = MatchHandler.instance.CurrentRound;
-            bool wonThisRound = Core.Instance.GetMatchResult() == Core.MatchResult.Won;
+            bool wonThisRound = Core.Instance.GetMatchResultEdgeCase(damagedPlayer) == Core.MatchResult.Won;
             List<int> roundResults = MatchHandler.instance.RoundsWonList.ToList();
 
             if (currentRound == 0) isMatchEnd = false;
             else if (currentRound == 1)
             {
-                isMatchEnd = roundResults[0] == 1 && wonThisRound;
+                isMatchEnd = roundResults[0] == 1 && wonThisRound
+                          || roundResults[0] == 0 && !wonThisRound;
             }
             else if (currentRound == 2) isMatchEnd = true;
 
@@ -501,7 +561,7 @@ namespace DieHarder
             bool otherHealthEmpty = false;
             if (PlayerManager.Instance.LocalPlayer != null)
                 localHealthEmpty = PlayerManager.Instance.LocalPlayer.Data.HealthPoints == 0;
-            foreach (Player player in PlayerManager.Instance.AllPlayers)
+            foreach (Il2CppRUMBLE.Players.Player player in PlayerManager.Instance.AllPlayers)
             {
                 if (player.Controller.controllerType != Il2CppRUMBLE.Players.ControllerType.Local && player.Data.HealthPoints == 0)
                     otherHealthEmpty = true;
@@ -509,7 +569,30 @@ namespace DieHarder
 
             if (localHealthEmpty && !otherHealthEmpty) return MatchResult.Lost;
             else if (localHealthEmpty && otherHealthEmpty) return MatchResult.Tied;
+            else if (!localHealthEmpty && otherHealthEmpty) return MatchResult.Won;
+            else return MatchResult.Undecided;
+        }
+
+        public MatchResult GetMatchResult(PlayerController damagedPlayer)
+        {
+            if (damagedPlayer == null) return MatchResult.Undecided;
+            if (damagedPlayer.controllerType == ControllerType.Local) return MatchResult.Lost;
             else return MatchResult.Won;
+        }
+
+        public MatchResult GetMatchResultEdgeCase(PlayerController damagedPlayer = null)
+        {
+            if (PlayerManager.Instance.AllPlayers.Count < 2) return MatchResult.Won;
+
+            MatchResult result = GetMatchResult();
+            if (result == MatchResult.Undecided)
+            {
+                if (damagedPlayer != null)
+                    result = GetMatchResult(damagedPlayer);
+                else if (Core.LastDamagedPlayer != null)
+                    result = GetMatchResult(Core.LastDamagedPlayer);
+            }
+            return result;
         }
 
         private void fetchStructurePools()
@@ -525,31 +608,56 @@ namespace DieHarder
         public void ProcessNewPlayer(PlayerController player)
         {
             if (playersProcessedThisFrame.Contains(player)) return;
-
-            PlayerHealth playerHealth = player.PlayerHealth;
-
-            SkinnedMeshRenderer smr = player.PlayerVisuals.GetComponentInChildren<SkinnedMeshRenderer>();
-            Material playerMat = new Material(smr.material);
-            playerMat.hideFlags = HideFlags.HideAndDontSave | HideFlags.DontUnloadUnusedAsset;
-            if (player.controllerType == Il2CppRUMBLE.Players.ControllerType.Local)
-            {
-                Material newMat = new Material(playerMat);
-                Ragdoll.LocalHeadClippedMat = newMat;
-                Ragdoll.LocalHeadClippedMat.hideFlags = HideFlags.HideAndDontSave | HideFlags.DontUnloadUnusedAsset;
-            }
-            playerMat.SetInt("_IsLocalPlayer", 0);
-            Ragdoll.PlayerMats[player] = playerMat;
-
-            try
-            {
-                CreateSilhouetteFromPlayer(player);
-            }
-            catch
-            {
-                Debug.Log("Could not create silhouette for player " + HelperFunctions.SanitizeString(player.assignedPlayer.Data.GeneralData.PublicUsername), false, 2);
-            }
-
             playersProcessedThisFrame.Add(player);
+
+            MelonCoroutines.Start(_());
+            IEnumerator _()
+            {
+                int tries = 0;
+
+                while (tries++ < 60)
+                {
+                    if (player == null || player.PlayerSessionStateSystem == null)
+                    {
+                        yield return new WaitForSeconds(1f);
+                    }
+                    else if (player.PlayerSessionStateSystem.CurrentVRState != PlayerSessionStateSystem.VRState.Present)
+                    {
+                        yield return new WaitForSeconds(1f);
+                    }
+                    else
+                    {
+                        break;
+                    }
+                }
+
+                if (tries >= 60)
+                {
+                    Debug.Log("Failed to process player: " + HelperFunctions.SanitizeString(player.assignedPlayer.Data.GeneralData.PublicUsername), false, 2);
+                    yield break;
+                }
+
+                SkinnedMeshRenderer smr = player.PlayerVisuals.GetComponentInChildren<SkinnedMeshRenderer>();
+                Material playerMat = new Material(smr.material);
+                playerMat.hideFlags = HideFlags.HideAndDontSave | HideFlags.DontUnloadUnusedAsset;
+                if (player.controllerType == Il2CppRUMBLE.Players.ControllerType.Local)
+                {
+                    Material newMat = new Material(playerMat);
+                    Ragdoll.LocalHeadClippedMat = newMat;
+                    Ragdoll.LocalHeadClippedMat.hideFlags = HideFlags.HideAndDontSave | HideFlags.DontUnloadUnusedAsset;
+                }
+                playerMat.SetInt("_IsLocalPlayer", 0);
+                Ragdoll.PlayerMats[player] = playerMat;
+
+                try
+                {
+                    Impact.CreatePlayerSilhouette(player);
+                }
+                catch
+                {
+                    Debug.Log("Could not create silhouette for player " + HelperFunctions.SanitizeString(player.assignedPlayer.Data.GeneralData.PublicUsername), false, 2);
+                }
+            }
         }
 
         public float CalculateDrama(PlayerController player, StructureStorage closestStructure)
@@ -564,13 +672,20 @@ namespace DieHarder
              * 7 damage: 2.0
             */
 
-            if (ModUISettings.VariableEffects <= 0) return 1f;
+            if (Config.VariableEffects.Value == 0) return 1f;
+
+            if (PlayersKilledToGutter.Contains(player))
+            {
+                float playerVelocity = player.PlayerPhysics.physicsRigidbody.velocity.magnitude;
+                return playerVelocity / 10f;
+            }
+
+            if (player.GetStandingPosition().y < -40) return 1f;
 
             float damage = GetPlayerDamage(player, closestStructure);
-
             float overkill = GetPlayerOverkill(player, closestStructure);
-            if (ModUISettings.VariableEffects >= 3) overkill *= 1.5f;
-            if (ModUISettings.VariableEffects >= 2) damage += overkill;
+            if ((int)Config.VariableEffects.Value == 2) overkill *= 1.5f;
+            damage += overkill;
 
             // Normalized as if 1 were the minimum damage and 4 were the "normal" amount
             float drama = Mathf.Clamp((damage - 1f) / 3f, 0f, float.MaxValue);
@@ -608,9 +723,9 @@ namespace DieHarder
                 lightVolume = 0;
             }
 
-            hardVolume *= ModUISettings.DramaticEffectsVolume * 0.8f;
-            mediumVolume *= ModUISettings.DramaticEffectsVolume;
-            lightVolume *= ModUISettings.DramaticEffectsVolume * 0.8f;
+            hardVolume *= Config.DramaticEffectsVolume.Value * 0.8f;
+            mediumVolume *= Config.DramaticEffectsVolume.Value;
+            lightVolume *= Config.DramaticEffectsVolume.Value * 0.8f;
 
             try
             {
@@ -638,15 +753,15 @@ namespace DieHarder
 
                 if (preImpact)
                 {
-                    audioSource1 = RumbleModdingAPI.RMAPI.AudioManager.PlaySound(PreImpactLight, pos).AudioSource;
-                    audioSource2 = RumbleModdingAPI.RMAPI.AudioManager.PlaySound(PreImpactMedium, pos).AudioSource;
-                    audioSource3 = RumbleModdingAPI.RMAPI.AudioManager.PlaySound(PreImpactHard, pos).AudioSource;
+                    audioSource1 = AudioManager.PlaySound(PreImpactLight, pos).AudioSource;
+                    audioSource2 = AudioManager.PlaySound(PreImpactMedium, pos).AudioSource;
+                    audioSource3 = AudioManager.PlaySound(PreImpactHard, pos).AudioSource;
                 }
                 else
                 {
-                    audioSource1 = RumbleModdingAPI.RMAPI.AudioManager.PlaySound(ImpactLight, pos).AudioSource;
-                    audioSource2 = RumbleModdingAPI.RMAPI.AudioManager.PlaySound(ImpactMedium, pos).AudioSource;
-                    audioSource3 = RumbleModdingAPI.RMAPI.AudioManager.PlaySound(ImpactHard, pos).AudioSource;
+                    audioSource1 = AudioManager.PlaySound(ImpactLight, pos).AudioSource;
+                    audioSource2 = AudioManager.PlaySound(ImpactMedium, pos).AudioSource;
+                    audioSource3 = AudioManager.PlaySound(ImpactHard, pos).AudioSource;
                 }
             }
             catch
@@ -672,24 +787,32 @@ namespace DieHarder
         public void OnPlayerDamage(PlayerController player, int newHealth, int previousHealth)
         {
             if (player == null) return;
+            if (player.PlayerSessionStateSystem.CurrentVRState != PlayerSessionStateSystem.VRState.Present)
+                return;
+
             int damage = previousHealth - newHealth;
 
             // Ragdoll on damage
-            if ((IsInMatch && ModUISettings.RagdollsInMatches >= 3) || (!IsInMatch && ModUISettings.RagdollsOutsideMatches >= 2))
+            if ((IsInMatch && (int)Config.RagdollsInMatches.Value >= 3) || (!IsInMatch && (int)Config.RagdollsOutsideMatches.Value >= 2))
             {
                 if (damage > 0)
                 {
                     StructureStorage closestStructure = FindClosestStructure(player);
-                    float drama = CalculateDrama(player, closestStructure);
+                    float drama = 0.3f;
+                    if (player.assignedPlayer.Data.HealthPoints == 0)
+                        drama = CalculateDrama(player, closestStructure);
 
-                    if ((IsInMatch && ModUISettings.RagdollsInMatches < 4) || (!IsInMatch && ModUISettings.RagdollsOutsideMatches < 3))
+                    if ((IsInMatch && (int)Config.RagdollsInMatches.Value < 4) || (!IsInMatch && (int)Config.RagdollsOutsideMatches.Value < 3))
                         damage = 1;
                     for (int i = 0; i < damage; i++)
                     {
-                        Ragdoll newRagdoll = Ragdoll.SpawnRagdoll(player, closestStructure, drama);
-                        newRagdoll.Hit(closestStructure);
-                        if (IsInMatch && ModUISettings.CleanupInMatches >= 2) newRagdoll.ClearAfter(ModUISettings.CleanupInMatches);
-                        else if (!IsInMatch && ModUISettings.CleanupOutsideMatches > 0) newRagdoll.ClearAfter(ModUISettings.CleanupOutsideMatches);
+                        if (player.PlayerSessionStateSystem.CurrentVRState == PlayerSessionStateSystem.VRState.Present)
+                        {
+                            Ragdoll newRagdoll = Ragdoll.SpawnRagdoll(player, closestStructure, drama);
+                            newRagdoll.Hit(closestStructure);
+                            if (IsInMatch && Config.CleanupInMatches.Value >= 2) newRagdoll.ClearAfter(Config.CleanupInMatches.Value, false);
+                            else if (!IsInMatch && Config.CleanupOutsideMatches.Value > 0) newRagdoll.ClearAfter(Config.CleanupOutsideMatches.Value, false);
+                        }
                     }
                 }
             }
@@ -699,34 +822,45 @@ namespace DieHarder
 
         public void OnPlayerHealthDepleted(PlayerHealth playerHealth)
         {
-            if (playerHealth.IsRegeneratingHealth) return;
             if (IsInMatch && HasRoundEnded) return;
             if (IsInMatch) HasRoundEnded = true;
 
+            if (playerHealth == null) return;
+            PlayerController damagedPlayer = playerHealth.ParentController;
+            LastDamagedPlayer = damagedPlayer;
+            if (damagedPlayer == null) return;
+
             bool howardInvolved = false;
-            if (Howard?.playerControllerInRange != null)
+            if (Howard != null && Howard.playerControllerInRange != null)
                 howardInvolved = true;
 
-            DetermineIfMatchEnd();
+            DetermineIfMatchEnd(damagedPlayer);
 
-            PlayerController damagedPlayer = playerHealth.ParentController;
+            if (CurrentScene == "Map0")
+            {
+                Vector3 pos = damagedPlayer.GetStandingPosition();
+                float lateralDist = new Vector3(pos.x, 0f, pos.z).magnitude;
+                if (damagedPlayer.GetStandingPosition().y <= -0.09f || lateralDist >= 12f)
+                    PlayersKilledToGutter.Add(damagedPlayer);
+            }
+
             StructureStorage closestStructure = FindClosestStructure(damagedPlayer);
             float drama = CalculateDrama(damagedPlayer, closestStructure);
 
             if (IsInMatch)
             {
-                if (ModUISettings.DramaticEffectsInMatches == 2)
+                if ((int)Config.DramaticEffectsInMatches.Value == 2)
                 {
                     ActiveImpact = CreateImpact(damagedPlayer, drama, howardInvolved);
                 }
-                if (ModUISettings.DramaticEffectsInMatches == 1 && WasMatchEnd)
+                if ((int)Config.DramaticEffectsInMatches.Value == 1 && WasMatchEnd)
                 {
                     ActiveImpact = CreateImpact(damagedPlayer, drama, howardInvolved);
                 }
             }
             else
             {
-                if (ModUISettings.DramaticEffectsOutsideMatches == 1)
+                if ((int)Config.DramaticEffectsOutsideMatches.Value == 1)
                 {
                     ActiveImpact = CreateImpact(damagedPlayer, drama, howardInvolved);
                 }
@@ -747,32 +881,38 @@ namespace DieHarder
 
             if (IsInMatch)
             {
-                if ((ModUISettings.RagdollsInMatches == 1 && WasMatchEnd) || ModUISettings.RagdollsInMatches == 2)
+                if (((int)Config.RagdollsInMatches.Value == 1 && WasMatchEnd) || (int)Config.RagdollsInMatches.Value == 2)
                 {
-                    newRagdoll = Ragdoll.SpawnRagdoll(damagedPlayer, closestStructure, drama);
-                    newRagdoll.Hit(closestStructure);
-                    newRagdoll.UndoGhostOnClear = true;
-                    if (ModUISettings.CleanupInMatches >= 2)
-                        newRagdoll.ClearAfter(ModUISettings.CleanupInMatches);
-                    else
-                        newRagdoll.GhostifyOwner();
+                    if (damagedPlayer.PlayerSessionStateSystem.CurrentVRState == PlayerSessionStateSystem.VRState.Present)
+                    {
+                        newRagdoll = Ragdoll.SpawnRagdoll(damagedPlayer, closestStructure, drama);
+                        newRagdoll.Hit(closestStructure);
+                        newRagdoll.UndoGhostOnClear = true;
+                        if (Config.CleanupInMatches.Value >= 2)
+                            newRagdoll.ClearAfter(Config.CleanupInMatches.Value);
+                        else
+                            newRagdoll.GhostifyOwner();
+                    }
                 }
             }
             else
             {
-                if (ModUISettings.RagdollsOutsideMatches == 1)
+                if ((int)Config.RagdollsOutsideMatches.Value == 1)
                 {
-                    newRagdoll = Ragdoll.SpawnRagdoll(damagedPlayer, closestStructure, drama);
-                    newRagdoll.Hit(closestStructure);
-                    if (ModUISettings.CleanupOutsideMatches > 0)
+                    if (damagedPlayer.PlayerSessionStateSystem.CurrentVRState == PlayerSessionStateSystem.VRState.Present)
                     {
-                        newRagdoll.UndoGhostOnClear = true;
-                        newRagdoll.ClearAfter(ModUISettings.CleanupOutsideMatches);
+                        newRagdoll = Ragdoll.SpawnRagdoll(damagedPlayer, closestStructure, drama);
+                        newRagdoll.Hit(closestStructure);
+                        if (Config.CleanupOutsideMatches.Value > 0)
+                        {
+                            newRagdoll.UndoGhostOnClear = true;
+                            newRagdoll.ClearAfter(Config.CleanupOutsideMatches.Value);
+                        }
                     }
                 }
             }
 
-            if (Prefs_SmashBrosLaunch.Value && newRagdoll != null)
+            if (Config.SmashBrosLaunch.Value && newRagdoll != null)
             {
                 newRagdoll.DoSmashLaunch = true;
                 Vector3 launchLateral = Vector3.zero;
@@ -827,7 +967,9 @@ namespace DieHarder
             }
 
             int health = player.assignedPlayer.Data.HealthPoints - damage;
-            int overkill = health - (prevHealth - damage);
+
+            int overkill = 0;
+            if (health < 0) overkill = Math.Abs(health);
 
             return overkill;
         }
@@ -837,7 +979,7 @@ namespace DieHarder
             if (PlayerSilhouettes.ContainsKey(player))
                 return PlayerSilhouettes[player];
 
-            return CreateSilhouetteFromPlayer(player);
+            return Impact.CreatePlayerSilhouette(player);
         }
 
         public List<PlayerVisualsClone> GetInvolvedPlayers(PlayerController damagedPlayer)
@@ -857,6 +999,16 @@ namespace DieHarder
                 if (damagedPlayer.controllerType != Il2CppRUMBLE.Players.ControllerType.Local)
                     involvedPlayers.Add(FindOrCreateSilhouette(PlayerManager.instance.localPlayer.Controller));
             }
+
+            List<PlayerVisualsClone> toRemove = new();
+            foreach (PlayerVisualsClone player in involvedPlayers)
+            {
+                if (player.ParentController.PlayerSessionStateSystem.CurrentVRState != PlayerSessionStateSystem.VRState.Present)
+                    toRemove.Add(player);
+            }
+            foreach (PlayerVisualsClone player in toRemove)
+                involvedPlayers.Remove(player);
+
             return involvedPlayers;
         }
 
@@ -872,28 +1024,6 @@ namespace DieHarder
             ActiveShockwave.SetUp();
         }
 
-        public PlayerVisualsClone CreateSilhouetteFromPlayer(PlayerController player)
-        {
-            if (player == null) return null;
-
-            if (PlayerSilhouettes.TryGetValue(player, out PlayerVisualsClone ps))
-            {
-                ps?.ReapplyVisuals();
-                return ps;
-            }
-
-            GameObject newClone = GameObject.Instantiate(player.PlayerVisuals.gameObject);
-            PlayerVisualsClone playerSilhouette = newClone.AddComponent<PlayerVisualsClone>();
-            playerSilhouette.ParentController = player;
-            playerSilhouette.SetUp();
-            newClone.SetActive(false);
-            newClone.transform.SetParent(ModObject_Silhouettes.transform);
-            newClone.name = HelperFunctions.SanitizeString(player.assignedPlayer.Data.GeneralData.PublicUsername) + "Silhouette";
-
-            PlayerSilhouettes[player] = playerSilhouette;
-            return playerSilhouette;
-        }
-
         public Impact CreateImpact(PlayerController damagedPlayer, float drama = 1f, bool howardInvolved = false)
         {
             if (damagedPlayer == null) return null;
@@ -906,7 +1036,7 @@ namespace DieHarder
             Impacts.Add(newImpact);
 
             newImpact.InvolvedPlayers = GetInvolvedPlayers(damagedPlayer);
-            newImpact.DamagedPlayer = FindOrCreateSilhouette(damagedPlayer);
+            newImpact.DamagedPlayer = Impact.CreatePlayerSilhouette(damagedPlayer);
 
             if (!howardInvolved)
             {

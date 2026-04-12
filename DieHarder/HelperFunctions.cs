@@ -6,6 +6,7 @@ using UnityEngine;
 using UnityEngine.Networking;
 using System.IO;
 using System.Text.RegularExpressions;
+using System.Reflection;
 
 namespace DieHarder
 {
@@ -55,6 +56,17 @@ namespace DieHarder
             Vector3 velocityB = rbB != null ? rbB.velocity : Vector3.zero;
 
             return velocityA - velocityB;
+        }
+
+        public static byte[] LoadEmbeddedResource(string resourcePath)
+        {
+            var assembly = Assembly.GetExecutingAssembly();
+            using Stream stream = assembly.GetManifestResourceStream(resourcePath);
+            if (stream == null)
+                throw new FileNotFoundException($"Embedded resource '{resourcePath}' not found.");
+            using MemoryStream ms = new MemoryStream();
+            stream.CopyTo(ms);
+            return ms.ToArray();
         }
     }
 }
