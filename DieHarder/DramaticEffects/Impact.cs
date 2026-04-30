@@ -94,7 +94,7 @@ namespace DieHarder
             if (!playedRumbleAudio && waitedTime >= 0.3f)
             {
                 playedRumbleAudio = true;
-                activeRumbleAudio = AudioManager.PlaySound(Core.Buildup, DamagePos)?.AudioSource;
+                activeRumbleAudio = RumbleModdingAPI.RMAPI.AudioManager.PlaySound(Core.Buildup, DamagePos)?.AudioSource;
                 if (activeRumbleAudio != null) Core.RemoveAudioFalloff(activeRumbleAudio);
             }
 

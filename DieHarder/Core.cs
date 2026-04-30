@@ -27,7 +27,7 @@ namespace DieHarder
     {
         public const string Name = "DieHarder";
         public const string Author = "TacoSlayer36";
-        public const string Version = "2.0.9";
+        public const string Version = "2.0.10";
         public const string Description = "That death goes hard";
     }
 
@@ -40,7 +40,7 @@ namespace DieHarder
 
         public static bool UIInit = false;
 
-        public const string PreferredVersion = "0.5.0.5";
+        public const string PreferredVersion = "0.5.0.6";
         public static bool ForceDisabled = false;
 
         public GameObject ModObject_Parent;
@@ -236,14 +236,14 @@ namespace DieHarder
                 string path = UserDataPath + "/effect_sounds/" + fileName + suffix + ".wav";
                 if (File.Exists(path))
                 {
-                    audioCall = AudioManager.CreateAudioCall(path, 1);
+                    audioCall = RumbleModdingAPI.RMAPI.AudioManager.CreateAudioCall(path, 1);
                     return true;
                 }
 
                 path = UserDataPath + "/effect_sounds/" + fileName + ".wav";
                 if (File.Exists(path))
                 {
-                    audioCall = AudioManager.CreateAudioCall(path, 1);
+                    audioCall = RumbleModdingAPI.RMAPI.AudioManager.CreateAudioCall(path, 1);
                     return true;
                 }
 
@@ -465,7 +465,7 @@ namespace DieHarder
                 {
                     foreach (var file in Directory.GetFiles(RagdollAudioPath))
                     {
-                        AudioClip newClip = AudioManager.LoadWavFile(file);
+                        AudioClip newClip = RumbleModdingAPI.RMAPI.AudioManager.LoadWavFile(file);
                         newClip.hideFlags = HideFlags.HideAndDontSave | HideFlags.DontUnloadUnusedAsset;
                         if (file.Contains("soft")) RagdollAudioClipsSoft.Add(newClip);
                         else RagdollAudioClipsHard.Add(newClip);
@@ -615,7 +615,7 @@ namespace DieHarder
             {
                 int tries = 0;
 
-                while (tries++ < 60)
+                while (tries++ < 10 || player != null)
                 {
                     if (player == null || player.PlayerSessionStateSystem == null)
                     {
@@ -753,15 +753,15 @@ namespace DieHarder
 
                 if (preImpact)
                 {
-                    audioSource1 = AudioManager.PlaySound(PreImpactLight, pos).AudioSource;
-                    audioSource2 = AudioManager.PlaySound(PreImpactMedium, pos).AudioSource;
-                    audioSource3 = AudioManager.PlaySound(PreImpactHard, pos).AudioSource;
+                    audioSource1 = RumbleModdingAPI.RMAPI.AudioManager.PlaySound(PreImpactLight, pos).AudioSource;
+                    audioSource2 = RumbleModdingAPI.RMAPI.AudioManager.PlaySound(PreImpactMedium, pos).AudioSource;
+                    audioSource3 = RumbleModdingAPI.RMAPI.AudioManager.PlaySound(PreImpactHard, pos).AudioSource;
                 }
                 else
                 {
-                    audioSource1 = AudioManager.PlaySound(ImpactLight, pos).AudioSource;
-                    audioSource2 = AudioManager.PlaySound(ImpactMedium, pos).AudioSource;
-                    audioSource3 = AudioManager.PlaySound(ImpactHard, pos).AudioSource;
+                    audioSource1 = RumbleModdingAPI.RMAPI.AudioManager.PlaySound(ImpactLight, pos).AudioSource;
+                    audioSource2 = RumbleModdingAPI.RMAPI.AudioManager.PlaySound(ImpactMedium, pos).AudioSource;
+                    audioSource3 = RumbleModdingAPI.RMAPI.AudioManager.PlaySound(ImpactHard, pos).AudioSource;
                 }
             }
             catch

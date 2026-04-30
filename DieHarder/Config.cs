@@ -111,7 +111,7 @@ namespace DieHarder
             Config.LegacyRagdollJank = Config.Cat_Hidden.CreateEntry("LegacyRagdollJank", false, "legacy ragdoll jank", "Brings back the janky ragdolls of older versions");
             Config.SmashBrosLaunch = Config.Cat_Hidden.CreateEntry("SmashBrosLaunch", false, "smash bros launch", "Launch ragdolls into the stratosphere");
 
-            UI.Register(Core.Instance, Config.Cat_DramaticEffects, Config.Cat_Ragdolls);
+            UI.Register((MelonBase)Core.Instance, Config.Cat_DramaticEffects, Config.Cat_Ragdolls);
             Core.UIInit = true;
         }
 

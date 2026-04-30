@@ -5,17 +5,35 @@
 	</PropertyGroup>
 
 	<ItemGroup>
-		<Reference Include="C:\Program Files (x86)\Steam\steamapps\common\RUMBLE\MelonLoader\**\*.dll" Private="false" />
-		<None Remove="assets\AssetBundles - Shortcut.lnk" />
-		<None Remove="assets\dieharder" />
-		<None Remove="assets\diehardest" />
+		<Reference Include="C:\Program Files (x86)\Steam\steamapps\common\RUMBLE\MelonLoader\Il2CppAssemblies\*.dll" Private="false" />
+		<Reference Include="C:\Program Files (x86)\Steam\steamapps\common\RUMBLE\MelonLoader\net6\*.dll" Private="false" />
+		<EmbeddedResource Include="assets\effect_sounds\buildup.wav" />
+		<EmbeddedResource Include="assets\effect_sounds\impact-hard.wav" />
+		<EmbeddedResource Include="assets\effect_sounds\impact-light.wav" />
+		<EmbeddedResource Include="assets\effect_sounds\impact-medium.wav" />
+		<EmbeddedResource Include="assets\effect_sounds\pre_impact-hard.wav" />
+		<EmbeddedResource Include="assets\effect_sounds\pre_impact-light.wav" />
+		<EmbeddedResource Include="assets\effect_sounds\pre_impact-medium.wav" />
 		<EmbeddedResource Include="assets\dieharder" />
+		<EmbeddedResource Include="assets\ragdoll_sounds\body_medium_impact_hard1.wav" />
+		<EmbeddedResource Include="assets\ragdoll_sounds\body_medium_impact_hard2.wav" />
+		<EmbeddedResource Include="assets\ragdoll_sounds\body_medium_impact_hard3.wav" />
+		<EmbeddedResource Include="assets\ragdoll_sounds\body_medium_impact_hard4.wav" />
+		<EmbeddedResource Include="assets\ragdoll_sounds\body_medium_impact_hard5.wav" />
+		<EmbeddedResource Include="assets\ragdoll_sounds\body_medium_impact_hard6.wav" />
+		<EmbeddedResource Include="assets\ragdoll_sounds\body_medium_impact_soft1.wav" />
+		<EmbeddedResource Include="assets\ragdoll_sounds\body_medium_impact_soft2.wav" />
+		<EmbeddedResource Include="assets\ragdoll_sounds\body_medium_impact_soft3.wav" />
+		<EmbeddedResource Include="assets\ragdoll_sounds\body_medium_impact_soft4.wav" />
+		<EmbeddedResource Include="assets\ragdoll_sounds\body_medium_impact_soft5.wav" />
+		<EmbeddedResource Include="assets\ragdoll_sounds\body_medium_impact_soft6.wav" />
+		<EmbeddedResource Include="assets\ragdoll_sounds\body_medium_impact_soft7.wav" />
 		<PackageReference Include="BepInEx.AssemblyPublicizer.MSBuild" Version="0.4.3">
 			<PrivateAssets>all</PrivateAssets>
 			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
 		</PackageReference>
-		<Reference Include="ModUI">
-			<HintPath>C:\Program Files (x86)\Steam\steamapps\common\RUMBLE\Mods\ModUI.dll</HintPath>
+		<Reference Include="UIFramework">
+			<HintPath>C:\Program Files (x86)\Steam\steamapps\common\RUMBLE\Mods\UIFramework.dll</HintPath>
 		</Reference>
 		<Reference Include="RumbleModdingAPI">
 			<HintPath>C:\Program Files (x86)\Steam\steamapps\common\RUMBLE\Mods\RumbleModdingAPI.dll</HintPath>
