@@ -16,6 +16,7 @@ using System.Linq;
 using System.Reflection.Metadata.Ecma335;
 using UnityEngine;
 using UnityEngine.Playables;
+using UnityEngine.SocialPlatforms;
 
 namespace DieHarder
 {
@@ -23,7 +24,7 @@ namespace DieHarder
     public class Ragdoll : PlayerVisualsClone
     {
         public static Dictionary<PlayerController, RagdollPool> RagdollPools = new();
-        public static Dictionary<PlayerController, Material> PlayerMats = new();
+        public static Dictionary<string, Material> PlayerMats = new();
         public static Dictionary<Renderer, Material> MiscMats = new();
         public static Material LocalHeadClippedMat = null;
         public static List<PlayerController> ghosts = new();
@@ -182,7 +183,12 @@ namespace DieHarder
 
             SkinnedMeshRenderer mySmr = Visuals.GetComponentInChildren<SkinnedMeshRenderer>();
             mySmr.gameObject.layer = 0;
-            mySmr.material = PlayerMats[ParentController];
+            if (PlayerMats.ContainsKey(ParentController.assignedPlayer.Data.GeneralData.PlayFabMasterId))
+            {
+                mySmr.material = PlayerMats[ParentController.assignedPlayer.Data.GeneralData.PlayFabMasterId];
+            }
+            
+            mySmr.material.SetInt("_IsLocalPlayer", 0);
 
             foreach (Rigidbody rb in GetComponentsInChildren<Rigidbody>())
             {
@@ -270,7 +276,7 @@ namespace DieHarder
                 SinkRoutine = MelonCoroutines.Start(Sink());
             }
 
-            if (!Core.Instance.IsInMatch && Age >= 8.5f && ghosts.Contains(ParentController)) UnGhostifyOwner();
+            if (!Core.Instance.IsInMatch && Config.CleanupOutsideMatches.Value > 0f && Age >= 8.5f && ghosts.Contains(ParentController)) UnGhostifyOwner();
 
             if (Chest.position.y < -20f) SetActive(false);
             if (Chest.position.magnitude > 300f) SetActive(false);
@@ -384,7 +390,13 @@ namespace DieHarder
 
         public void AddVelocity(Vector3 velocity)
         {
+            if (Config.RagdollVelocity.EditedValue is not Config.RagdollVelocityType.Default && Config.EnableFilmingFeatures.EditedValue) return;
             Chest.GetComponent<Rigidbody>().AddForce(velocity, ForceMode.VelocityChange);
+        }
+
+        public void SetVelocity(Vector3 velocity)
+        {
+            foreach (Rigidbody rb in GetComponentsInChildren<Rigidbody>()) rb.velocity = velocity;
         }
 
         public void Hit(StructureStorage killingStructure)
@@ -448,22 +460,35 @@ namespace DieHarder
         public static void Ghostify(PlayerController player)
         {
             if (!Config.EnableGhostification.Value) return;
+            if (player.controllerType is ControllerType.Local && LocalHeadClippedMat == null) return;
+            if (player.controllerType is not ControllerType.Local && !PlayerMats.ContainsKey(player.assignedPlayer.Data.GeneralData.PlayFabMasterId)) return;
 
             SkinnedMeshRenderer smr = player.PlayerVisuals.GetComponentInChildren<SkinnedMeshRenderer>();
-            smr.material = Core.Instance.GhostMat;
+            if (!(Config.InvisibleGhosts.EditedValue && Config.EnableFilmingFeatures.EditedValue))
+                smr.material = Core.Instance.GhostMat;
+            else
+                smr.material = Core.Instance.InvisibleMat;
 
-            //bool rockCamBeingUsed = Core.FindRockCamBeingUsed();
-            
+                //bool rockCamBeingUsed = Core.FindRockCamBeingUsed();
+
             float isLocal = player.controllerType == Il2CppRUMBLE.Players.ControllerType.Local ? 1f : 0f;
             smr.material.SetFloat("_IsLocal", isLocal);
 
-            foreach (Renderer r in player.PlayerVisuals.GetComponentsInChildren<Renderer>(true))
+            foreach (Renderer r in player.GetComponentsInChildren<Renderer>(true))
             {
+                if (r == null) continue;
+
                 if (r.transform.parent.GetComponent<ShiftStone>() != null)
                 {
-                    if (!MiscMats.ContainsKey(r))
+                    if (!MiscMats?.ContainsKey(r) ?? false)
+                    {
+                        r.material.hideFlags = HideFlags.HideAndDontSave | HideFlags.DontUnloadUnusedAsset;
                         MiscMats[r] = r.material;
-                    r.material = Core.Instance.GhostMat;
+                    }
+                    if (!(Config.InvisibleGhosts.EditedValue && Config.EnableFilmingFeatures.EditedValue))
+                        r.material = Core.Instance.GhostMat;
+                    else
+                        r.material = Core.Instance.InvisibleMat;
                 }
             }
 
@@ -479,18 +504,20 @@ namespace DieHarder
         {
             PlayerVisuals pv = player.PlayerVisuals;
             SkinnedMeshRenderer smr = pv.GetComponentInChildren<SkinnedMeshRenderer>();
-            if (player.ControllerType == Il2CppRUMBLE.Players.ControllerType.Local)
+            if (player.ControllerType == Il2CppRUMBLE.Players.ControllerType.Local && LocalHeadClippedMat != null)
                 smr.material = LocalHeadClippedMat;
             else
             {
-                if (PlayerMats[player] == null) return;
+                if (!PlayerMats.ContainsKey(player.assignedPlayer.Data.GeneralData.PlayFabMasterId)) return;
 
-                smr.material = PlayerMats[player];
+                smr.material = PlayerMats[player.assignedPlayer.Data.GeneralData.PlayFabMasterId];
             }
 
-            foreach (Renderer r in player.PlayerVisuals.GetComponentsInChildren<Renderer>(true))
+            foreach (Renderer r in player.GetComponentsInChildren<Renderer>(true))
             {
-                if (MiscMats.ContainsKey(r))
+                if (r == null) continue;
+
+                if (MiscMats?.ContainsKey(r) ?? false)
                 {
                     r.material = MiscMats[r];
                 }

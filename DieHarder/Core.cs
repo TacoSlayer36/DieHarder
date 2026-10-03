@@ -27,7 +27,7 @@ namespace DieHarder
     {
         public const string Name = "DieHarder";
         public const string Author = "TacoSlayer36";
-        public const string Version = "2.0.10";
+        public const string Version = "2.0.17";
         public const string Description = "That death goes hard";
     }
 
@@ -40,8 +40,23 @@ namespace DieHarder
 
         public static bool UIInit = false;
 
-        public const string PreferredVersion = "0.5.0.6";
-        public static bool ForceDisabled = false;
+        public static string[] PreferredVersion = {"0", "5", "1"};
+        public static bool ForceDisabled => noUI || wrongVersion || replayActive;
+        static bool noUI = false;
+        static bool wrongVersion = false;
+
+        internal static bool? _replayActive = null;
+        static bool replayActive
+        {
+            get
+            {
+                if (_replayActive == null)
+                    _replayActive = GameObject.Find("Replay Root") != null;
+
+                if (Config.DisableReplayBlock?.EditedValue == true) return false;
+                return _replayActive.Value;
+            }
+        }
 
         public GameObject ModObject_Parent;
         public GameObject ModObject_Silhouettes;
@@ -148,6 +163,21 @@ namespace DieHarder
                 return _ghostMat;
             }
         }
+        private Material _invisibleMat;
+        public Material InvisibleMat
+        {
+            get
+            {
+                if (_invisibleMat == null)
+                {
+                    _invisibleMat = new Material(GhostShader);
+                    _invisibleMat.hideFlags = HideFlags.HideAndDontSave | HideFlags.DontUnloadUnusedAsset;
+                    _invisibleMat.SetFloat("_HeadOpacity", 0.0f);
+                    _invisibleMat.SetFloat("_BodyOpacity", 0.0f);
+                }
+                return _invisibleMat;
+            }
+        }
 
         public const string UserDataPath = "UserData/" + BuildInfo.Name + "/";
         public const string RagdollAudioPath = "UserData/" + BuildInfo.Name + "/ragdoll_sounds/";
@@ -179,13 +209,22 @@ namespace DieHarder
         private bool howardDied;
         public Material HowardMat = null;
 
+        bool ragdollButtonPressedPrev = false;
+        bool effectsButtonPressedPrev = false;
+        bool resetButtonPressedPrev = false;
+        bool preventImpactRagdoll = false;
+
         //public ScriptableRendererFeature LIVPlayersInstance;
 
         public override void OnLateInitializeMelon()
         {
-            if (Application.version != PreferredVersion)
+            string[] version = Application.version.Split('.');
+
+            if (version[0] != PreferredVersion[0]
+             || version[1] != PreferredVersion[1]
+             || version[2] != PreferredVersion[2])
             {
-                ForceDisabled = true;
+                wrongVersion = true;
                 string error = $"DieHarder was made for a different version of RUMBLE ({PreferredVersion}). It has been disabled to prevent game-breaking bugs";
                 Debug.Log(error, false, 2);
                 MelonCoroutines.Start(delayedError(15f, error));
@@ -276,7 +315,7 @@ namespace DieHarder
                 yield return new WaitForFixedUpdate();
                 if (!UIInit)
                 {
-                    ForceDisabled = true;
+                    noUI = true;
                     string error = $"Could not create UIFramework interface. Disabling DieHarder to prevent game-breaking bugs. Make sure you have the dependency installed";
                     Debug.Log(error, false, 2);
                     MelonCoroutines.Start(delayedError(15f, error));
@@ -340,6 +379,40 @@ namespace DieHarder
                     }
                 }
             }
+
+            bool ragdollButtonPressed = HelperFunctions.IsControllerButtonPressed(Config.RagdollOnButton.EditedValue) && Config.EnableFilmingFeatures.EditedValue;
+            if (!ragdollButtonPressedPrev && ragdollButtonPressed)
+            {
+                PlayerController localPlayer = PlayerManager.Instance.LocalPlayer.Controller;
+                StructureStorage closestStructure = FindClosestStructure(localPlayer);
+
+                Ragdoll newRagdoll = Ragdoll.SpawnRagdoll(localPlayer, closestStructure);
+                newRagdoll.GhostifyOwner();
+                if (Config.RagdollVelocity.EditedValue is Config.RagdollVelocityType.Motionless)
+                    newRagdoll.SetVelocity(Vector3.zero);
+                else if (Config.RagdollVelocity.EditedValue is Config.RagdollVelocityType.Inherit)
+                    newRagdoll.SetVelocity(PlayerManager.Instance.LocalPlayer.Controller.PlayerPhysics.PhysicsRigidbody.velocity);
+
+            }
+            ragdollButtonPressedPrev = ragdollButtonPressed;
+
+            bool effectsButtonPressed = HelperFunctions.IsControllerButtonPressed(Config.EffectsOnButton.EditedValue) && Config.EnableFilmingFeatures.EditedValue;
+            if (!effectsButtonPressedPrev && effectsButtonPressed)
+            {
+                PlayerController localPlayer = PlayerManager.Instance.LocalPlayer.Controller;
+                StructureStorage closestStructure = FindClosestStructure(localPlayer);
+
+                preventImpactRagdoll = true;
+                CreateImpact(localPlayer, CalculateDrama(PlayerManager.Instance.LocalPlayer.Controller, closestStructure));
+            }
+            effectsButtonPressedPrev = effectsButtonPressed;
+
+            bool resetButtonPressed = HelperFunctions.IsControllerButtonPressed(Config.ResetRagdollsButton.EditedValue) && Config.EnableFilmingFeatures.EditedValue;
+            if (!resetButtonPressedPrev && resetButtonPressed)
+            {
+                Ragdoll.ClearAllRagdolls();
+            }
+            resetButtonPressedPrev = resetButtonPressed;
         }
 
         public override void OnFixedUpdate()
@@ -395,6 +468,8 @@ namespace DieHarder
 
         public override void OnSceneWasUnloaded(int buildIndex, string sceneName)
         {
+            ActiveImpact?.CancelAnimation();
+
             if (ForceDisabled) return;
 
             Impact.FogEndDistanceStorage = -1f;
@@ -613,9 +688,9 @@ namespace DieHarder
             MelonCoroutines.Start(_());
             IEnumerator _()
             {
-                int tries = 0;
+                string scene = CurrentScene;
 
-                while (tries++ < 10 || player != null)
+                while (scene == CurrentScene || player != null)
                 {
                     if (player == null || player.PlayerSessionStateSystem == null)
                     {
@@ -631,23 +706,17 @@ namespace DieHarder
                     }
                 }
 
-                if (tries >= 60)
-                {
-                    Debug.Log("Failed to process player: " + HelperFunctions.SanitizeString(player.assignedPlayer.Data.GeneralData.PublicUsername), false, 2);
-                    yield break;
-                }
-
-                SkinnedMeshRenderer smr = player.PlayerVisuals.GetComponentInChildren<SkinnedMeshRenderer>();
+                SkinnedMeshRenderer smr = player.transform.GetChild(1).GetChild(0).GetComponent<SkinnedMeshRenderer>();
                 Material playerMat = new Material(smr.material);
                 playerMat.hideFlags = HideFlags.HideAndDontSave | HideFlags.DontUnloadUnusedAsset;
-                if (player.controllerType == Il2CppRUMBLE.Players.ControllerType.Local)
+                if (player.controllerType == ControllerType.Local)
                 {
                     Material newMat = new Material(playerMat);
                     Ragdoll.LocalHeadClippedMat = newMat;
                     Ragdoll.LocalHeadClippedMat.hideFlags = HideFlags.HideAndDontSave | HideFlags.DontUnloadUnusedAsset;
                 }
                 playerMat.SetInt("_IsLocalPlayer", 0);
-                Ragdoll.PlayerMats[player] = playerMat;
+                Ragdoll.PlayerMats[player.assignedPlayer.Data.GeneralData.PlayFabMasterId] = playerMat;
 
                 try
                 {
@@ -662,6 +731,8 @@ namespace DieHarder
 
         public float CalculateDrama(PlayerController player, StructureStorage closestStructure)
         {
+            if (Config.DramaValue.Value >= 0 && Config.EnableFilmingFeatures.EditedValue) return Config.DramaValue.Value;
+
             // BASE VALUES ( (n-1)/3 ):
             /* 1 damage: 0.0
              * 2 damage: 0.3
@@ -793,7 +864,9 @@ namespace DieHarder
             int damage = previousHealth - newHealth;
 
             // Ragdoll on damage
-            if ((IsInMatch && (int)Config.RagdollsInMatches.Value >= 3) || (!IsInMatch && (int)Config.RagdollsOutsideMatches.Value >= 2))
+            if ((IsInMatch && (int)Config.RagdollsInMatches.Value >= 3)
+             || (!IsInMatch && (int)Config.RagdollsOutsideMatches.Value >= 2)
+             || (Config.RagdollOnNextHit.EditedValue && Config.EnableFilmingFeatures.EditedValue))
             {
                 if (damage > 0)
                 {
@@ -810,11 +883,34 @@ namespace DieHarder
                         {
                             Ragdoll newRagdoll = Ragdoll.SpawnRagdoll(player, closestStructure, drama);
                             newRagdoll.Hit(closestStructure);
-                            if (IsInMatch && Config.CleanupInMatches.Value >= 2) newRagdoll.ClearAfter(Config.CleanupInMatches.Value, false);
-                            else if (!IsInMatch && Config.CleanupOutsideMatches.Value > 0) newRagdoll.ClearAfter(Config.CleanupOutsideMatches.Value, false);
+                            if (!(Config.RagdollOnNextHit.EditedValue && Config.EnableFilmingFeatures.EditedValue))
+                            {
+                                if (IsInMatch && Config.CleanupInMatches.Value >= 2) newRagdoll.ClearAfter(Config.CleanupInMatches.Value, false);
+                                else if (!IsInMatch && Config.CleanupOutsideMatches.Value > 0) newRagdoll.ClearAfter(Config.CleanupOutsideMatches.Value, false);
+                            }
+                            else
+                            {
+                                newRagdoll.GhostifyOwner();
+                                if (Config.RagdollVelocity.EditedValue is Config.RagdollVelocityType.Motionless)
+                                    newRagdoll.SetVelocity(Vector3.zero);
+                                else if (Config.RagdollVelocity.EditedValue is Config.RagdollVelocityType.Inherit)
+                                    newRagdoll.SetVelocity(PlayerManager.Instance.LocalPlayer.Controller.PlayerPhysics.PhysicsRigidbody.velocity);
+                            }
                         }
                     }
                 }
+
+                Config.RagdollOnNextHit.Value = false;
+                Config.RagdollOnNextHit.EditedValue = false;
+            }
+
+            //Impact on hit
+            if (Config.EffectsOnNextHit.EditedValue && Config.EnableFilmingFeatures.EditedValue)
+            {
+                float drama = CalculateDrama(player, FindClosestStructure(player));
+                CreateImpact(player, drama);
+                Config.EffectsOnNextHit.Value = false;
+                Config.EffectsOnNextHit.EditedValue = false;
             }
 
             PlayerDamages[player] = new Tuple<int, int>(damage, previousHealth);
@@ -874,6 +970,12 @@ namespace DieHarder
 
         public void CreateRagdollIfNecessary(PlayerController damagedPlayer, StructureStorage closestStructure = null, float drama = 1f)
         {
+            if (preventImpactRagdoll)
+            {
+                preventImpactRagdoll = false;
+                return;
+            }
+
             if (closestStructure == null)
                 closestStructure = FindClosestStructure(damagedPlayer);
 

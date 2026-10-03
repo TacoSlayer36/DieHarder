@@ -118,6 +118,22 @@ namespace DieHarder
             return structures;
         }
 
+        public static void ClearKillDelayedStructures()
+        {
+            foreach (Structure structure in KillDelayed)
+            {
+                if (structure?.rigidBody != null)
+                    structure.rigidBody.isKinematic = false;
+
+                foreach (Collider c in structure.GetComponentsInChildren<Collider>())
+                    if (c != null)
+                    {
+                        c.enabled = true;
+                    }
+            }
+            KillDelayed.Clear();
+        }
+
         public static void ProcessStructureForPhysics(StructureStorage structureStorage)
         {
             GameObject structureGo = structureStorage.StructureGO;
@@ -174,6 +190,7 @@ namespace DieHarder
             {
                 foreach (Collider c in __instance.GetComponentsInChildren<Collider>())
                     c.enabled = true;
+                __instance.rigidBody.isKinematic = false;
                 __instance.Kill(killVelocity, playSFX, playVFX, networked);
             }
         }
@@ -191,7 +208,7 @@ namespace DieHarder
                     killStorage.Kill();
                 }
                 Core.Instance.StructureKillStorages.Clear();
-                StructureStorage.KillDelayed.Clear();
+                StructureStorage.ClearKillDelayedStructures();
                 yield break;
             }
 
@@ -223,7 +240,7 @@ namespace DieHarder
                 killStorage.Kill();
 
             Core.Instance.StructureKillStorages.Clear();
-            StructureStorage.KillDelayed.Clear();
+            StructureStorage.ClearKillDelayedStructures();
         }
 
         public StructureKillStorage(Structure instance, Vector3 killVelocity, bool playSFX, bool playVFX, bool networked)

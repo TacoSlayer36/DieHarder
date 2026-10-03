@@ -4,6 +4,7 @@ using MelonLoader;
 using System.ComponentModel;
 using UIFramework;
 using System.ComponentModel.DataAnnotations;
+using System.Numerics;
 
 namespace DieHarder
 {
@@ -30,7 +31,16 @@ namespace DieHarder
         public static MelonPreferences_Entry<EffectsOutsideMatches_Type> DramaticEffectsOutsideMatches;
         public static MelonPreferences_Entry<bool> IncludeStructureInImpact;
         public static MelonPreferences_Entry<float> DramaticEffectsVolume;
-        public static MelonPreferences_Entry<bool> DramaticEffectsHaptics;
+        public enum EffectsHaptics_Type
+        {
+            [Display(Name = "None")]
+            None = 0,
+            [Display(Name = "Use In-Game Settings")]
+            UseSettings = 1,
+            [Display(Name = "Always Shake Screen")]
+            AlwaysShake = 2
+        }
+        public static MelonPreferences_Entry<EffectsHaptics_Type> DramaticEffectsHaptics;
         public static MelonPreferences_Entry<string> PrimaryEffectColor;
         public static MelonPreferences_Entry<string> SecondaryEffectColor;
         public enum VariableEffects_Type
@@ -82,6 +92,52 @@ namespace DieHarder
         public static MelonPreferences_Entry<bool> LegacyRagdollJank;
         public static MelonPreferences_Entry<bool> SmashBrosLaunch;
 
+        public static MelonPreferences_Category Cat_Filming;
+        public enum ControllerButton
+        {
+            [Display(Name = "None")]
+            None,
+            [Display(Name = "Left Primary")]
+            LeftPrimary,
+            [Display(Name = "Right Primary")]
+            RightPrimary,
+            [Display(Name = "Left Secondary")]
+            LeftSecondary,
+            [Display(Name = "Right Secondary")]
+            RightSecondary,
+            [Display(Name = "Left Trigger")]
+            LeftTrigger,
+            [Display(Name = "Right Trigger")]
+            RightTrigger,
+            [Display(Name = "Left Grip")]
+            LeftGrip,
+            [Display(Name = "Right Grip")]
+            RightGrip,
+            [Display(Name = "Left Joystick")]
+            LeftJoystick,
+            [Display(Name = "Right Joystick")]
+            RightJoystick
+        }
+        public enum RagdollVelocityType
+        {
+            [Display(Name = "Default")]
+            Default,
+            [Display(Name = "Inherit From Player")]
+            Inherit,
+            [Display(Name = "Motionless")]
+            Motionless,
+        }
+        public static MelonPreferences_Entry<bool> EnableFilmingFeatures;
+        public static MelonPreferences_Entry<bool> RagdollOnNextHit;
+        public static MelonPreferences_Entry<ControllerButton> RagdollOnButton;
+        public static MelonPreferences_Entry<RagdollVelocityType> RagdollVelocity;
+        public static MelonPreferences_Entry<bool> InvisibleGhosts;
+        public static MelonPreferences_Entry<ControllerButton> ResetRagdollsButton;
+        public static MelonPreferences_Entry<bool> EffectsOnNextHit;
+        public static MelonPreferences_Entry<ControllerButton> EffectsOnButton;
+        public static MelonPreferences_Entry<float> DramaValue;
+        public static MelonPreferences_Entry<bool> DisableReplayBlock;
+
         public static void SetUpUI()
         {
             Config.Cat_DramaticEffects = MelonPreferences.CreateCategory("DramaticEffects", "Dramatic Effects");
@@ -90,7 +146,7 @@ namespace DieHarder
             Config.DramaticEffectsOutsideMatches = Config.Cat_DramaticEffects.CreateEntry("DramaticEffectsOutsideMatches", EffectsOutsideMatches_Type.Disabled, "Outside Matches", "");
             Config.IncludeStructureInImpact = Config.Cat_DramaticEffects.CreateEntry("IncludeStructureInImpact", true, "Include Structure", "Include the structure that delivered the killing blow in the impact frame");
             Config.DramaticEffectsVolume = Config.Cat_DramaticEffects.CreateEntry("DramaticEffectsVolume", 1f, "Volume", "Volume multiplier for the dramatic sounds\n0-1; default is 1");
-            Config.DramaticEffectsHaptics = Config.Cat_DramaticEffects.CreateEntry("DramaticEffectsHaptics", true, "Enable Haptics", "Whether to shake the screen and vibrate controllers for dramatic effects\n(Takes into account in-game settings by default)");
+            Config.DramaticEffectsHaptics = Config.Cat_DramaticEffects.CreateEntry("DramaticEffectsHaptics", EffectsHaptics_Type.AlwaysShake, "Haptics", "Whether to shake the screen and vibrate controllers for dramatic effects");
             Config.PrimaryEffectColor = Config.Cat_DramaticEffects.CreateEntry("PrimaryEffectColor", "#000000", "Primary Color", "The color of the player/structure silhouettes during the impact frame\nUse \"Match\" to base it on winning/losing matches and rounds\nUse \"None\" to prevent silhouette-ing");
             Config.SecondaryEffectColor = Config.Cat_DramaticEffects.CreateEntry("SecondaryEffectColor", "Match", "Secondary Color", "The color of the background during dramatic effects\nUse \"Match\" to base it on winning/losing matches and rounds");
             Config.VariableEffects = Config.Cat_DramaticEffects.CreateEntry("VariableEffects", VariableEffects_Type.OverkillBias, "Variable Effects", "Whether to base the intensity of the effects on the power of the hit");
@@ -111,7 +167,29 @@ namespace DieHarder
             Config.LegacyRagdollJank = Config.Cat_Hidden.CreateEntry("LegacyRagdollJank", false, "legacy ragdoll jank", "Brings back the janky ragdolls of older versions");
             Config.SmashBrosLaunch = Config.Cat_Hidden.CreateEntry("SmashBrosLaunch", false, "smash bros launch", "Launch ragdolls into the stratosphere");
 
-            UI.Register((MelonBase)Core.Instance, Config.Cat_DramaticEffects, Config.Cat_Ragdolls);
+            Config.Cat_Filming = MelonPreferences.CreateCategory("Filming", "Filming");
+            Config.Cat_Filming.SetFilePath(PreferencesFilePath);
+            Config.EnableFilmingFeatures = Config.Cat_Filming.CreateEntry("EnableFilmingFeatures", false, "Enable Filming Features", "Easily enable/disable all the below features");
+            Config.RagdollOnNextHit = Config.Cat_Filming.CreateEntry("RagdollOnNextHit", false, "Ragdoll Next Hit", "Force a ragdoll to spawn the next time someone takes damage");
+            Config.RagdollOnButton = Config.Cat_Filming.CreateEntry("RagdollOnButton", ControllerButton.None, "Ragdoll On Button", "Force a ragdoll to spawn when this controller button is pressed");
+            Config.RagdollVelocity = Config.Cat_Filming.CreateEntry("RagdollVelocity", RagdollVelocityType.Inherit, "Ragdoll Velocity", "The way velocity is applied to all ragdolls");
+            Config.InvisibleGhosts = Config.Cat_Filming.CreateEntry("InvisibleGhosts", false, "Invisible Ghosts", "Makes players invisible instead of ghostly after being ragdoll-ed");
+            Config.ResetRagdollsButton = Config.Cat_Filming.CreateEntry("ResetRagdollsOnButton", ControllerButton.None, "Reset Ragdolls Button", "Clear all ragdolls when this controller button is pressed");
+            UI.CreateButtonEntry(Cat_Filming, "Reset", "Reset Ragdolls", "Remove all ragdolls and make their players visible", Ragdoll.ClearAllRagdolls);
+            Config.EffectsOnNextHit = Config.Cat_Filming.CreateEntry("EffectsOnNextHit", false, "Dramatic Effects Next Hit", "Force dramatic effects the next time someone takes damage");
+            Config.EffectsOnButton = Config.Cat_Filming.CreateEntry("EffectsOnButton", ControllerButton.None, "Effects On Button", "Force dramatic effects when this controller button is pressed");
+            Config.DramaValue = Config.Cat_Filming.CreateEntry("DramaValue", -1f, "Drama Value", "The forced intensity any dramatic effects (usually 0.0 - 2.0; -1 for defaults)");
+            Config.DisableReplayBlock = Config.Cat_Filming.CreateEntry("DieHarder-DisableReplayBlock", false, "Disable Replay Block", "Allow mod to activate during ReplayMod replays (this is not officially supported and apt to break)");
+
+            if (PlayerManager.Instance?.LocalPlayer?.Data?.GeneralData?.PlayFabMasterId == "A38F5067A38BDDC9")
+            {
+                UI.RegisterMelon((MelonBase)Core.Instance, Config.Cat_DramaticEffects, Config.Cat_Ragdolls, Config.Cat_Filming, Cat_Hidden);
+            }
+            else
+            {
+                UI.RegisterMelon((MelonBase)Core.Instance, Config.Cat_DramaticEffects, Config.Cat_Ragdolls, Config.Cat_Filming);
+            }
+
             Core.UIInit = true;
         }
 

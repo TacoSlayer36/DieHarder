@@ -2,8 +2,10 @@
 using Il2CppRUMBLE.Combat.ShiftStones;
 using Il2CppRUMBLE.Managers;
 using Il2CppRUMBLE.Players;
+using Il2CppRUMBLE.Players.Comfort;
 using Il2CppRUMBLE.Players.Scaling;
 using Il2CppRUMBLE.Players.Subsystems;
+using Il2CppRUMBLE.Settings;
 using Il2CppRUMBLE.Utilities;
 using MelonLoader;
 using System.Collections;
@@ -22,7 +24,8 @@ namespace DieHarder
         public GameObject SphereBackground;
 
         public PlayerVisualsClone DamagedPlayer;
-        PlayerHaptics PlayerHaptics = PlayerManager.instance.localPlayer.Controller.PlayerHaptics;
+        public static PlayerHaptics PlayerHaptics => PlayerManager.instance.localPlayer.Controller.PlayerHaptics;
+        public static object ForceHapticsRoutine;
 
         public float Drama = 1f;
 
@@ -104,7 +107,7 @@ namespace DieHarder
             if (t <= 0.8)
             {
                 strength = Mathf.Pow(strength, 2f);
-                PlayerHaptics.AddHapticsSignal(strength, strength, strength);
+                AddHaptics(strength, strength, strength);
             }
             if (t > 0.9)
             {
@@ -240,10 +243,7 @@ namespace DieHarder
             ScreenFlash.CreateScreenFlash(PlayerManager.Instance.LocalPlayer.Controller.GetCamera().transform, LayerMask.NameToLayer("PlayerController"));
 
             // Shake the camera
-            if (Config.DramaticEffectsHaptics.Value)
-            {
-                PlayerHaptics.AddHapticsSignal(1f, 1f, 1f);
-            }
+            AddHaptics(1f, 1f, 1f);
 
             // End
             CancelAnimation(false);
@@ -252,6 +252,26 @@ namespace DieHarder
         void OnDestroy()
         {
             if (IsAnimationRunning) CancelAnimation();
+        }
+
+        public static void AddHaptics(float leftIntensity, float rightIntensity, float screenShake)
+        {
+            if (Config.DramaticEffectsHaptics.Value is Config.EffectsHaptics_Type.None) return;
+            
+            if (Config.DramaticEffectsHaptics.Value is Config.EffectsHaptics_Type.AlwaysShake)
+            {
+                if (ForceHapticsRoutine != null) MelonCoroutines.Stop(ForceHapticsRoutine);
+                MelonCoroutines.Start(forceHapticsFor(2f));
+            }
+
+            PlayerHaptics.AddHapticsSignal(leftIntensity, rightIntensity, screenShake);
+
+            IEnumerator forceHapticsFor(float seconds)
+            {
+                PlayerHaptics.comfortSettings.cameraShakeStrengthRange = new(1f, 1f);
+                yield return new WaitForSeconds(seconds);
+                PlayerHaptics.comfortSettings.cameraShakeStrengthRange = new(0f, 1f);
+            }
         }
 
         public void CancelAnimation(bool strong = true)
@@ -268,7 +288,7 @@ namespace DieHarder
                     structureKillStorage.Kill();
                 }
                 Core.Instance.StructureKillStorages.Clear();
-                StructureStorage.KillDelayed.Clear();
+                StructureStorage.ClearKillDelayedStructures();
             }
             else
             {
@@ -473,7 +493,6 @@ namespace DieHarder
                         m.gameObject.layer = Core.Instance.VisualLayer;
 
                         int isLocal = ParentController.ControllerType == Il2CppRUMBLE.Players.ControllerType.Local ? 1 : 0;
-                        m.material.SetFloat("_IsLocal", isLocal);
                         m.material.SetInt("_IsLocalPlayer", isLocal);
                     }
                 }
@@ -546,7 +565,7 @@ namespace DieHarder
             SkinnedMeshRenderer smr = Visuals.GetComponentInChildren<SkinnedMeshRenderer>();
             if (Config.PrimaryEffectColor.Value.ToLower() != "none")
                 smr.material = Core.Instance.PrimarySilhouetteMat;
-            else if (Ragdoll.PlayerMats.ContainsKey(ParentController))
+            else if (Ragdoll.PlayerMats.ContainsKey(ParentController.assignedPlayer.Data.GeneralData.PlayFabMasterId))
                 ReapplyVisuals();
 
             if (ShiftStones[0] != null)
@@ -596,8 +615,8 @@ namespace DieHarder
             SkinnedMeshRenderer myRenderer = Visuals.GetComponentInChildren<SkinnedMeshRenderer>();
             SkinnedMeshRenderer parentRenderer = ParentController.transform.GetChild(1).GetComponentInChildren<SkinnedMeshRenderer>();
             myRenderer.sharedMesh = parentRenderer.sharedMesh;
-            if (Ragdoll.PlayerMats[ParentController] == null) return;
-            myRenderer.material = Ragdoll.PlayerMats[ParentController];
+            if (!Ragdoll.PlayerMats.ContainsKey(ParentController.assignedPlayer.Data.GeneralData.PlayFabMasterId)) return;
+            myRenderer.material = Ragdoll.PlayerMats[ParentController.assignedPlayer.Data.GeneralData.PlayFabMasterId];
         }
     }
 }

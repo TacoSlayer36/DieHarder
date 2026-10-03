@@ -27,6 +27,8 @@ namespace DieHarder
     {
         private static void Postfix(ref PlayerVisuals __instance)
         {
+            Core._replayActive = null;
+
             if (Core.ForceDisabled) return;
 
             MelonCoroutines.Start(_(__instance?.parentController));
@@ -74,7 +76,7 @@ namespace DieHarder
         }
     }
 
-    [HarmonyPatch(typeof(MatchHandler), nameof(MatchHandler.ExecuteNextRound), new Type[] { })]
+    [HarmonyPatch(typeof(MatchHandler), nameof(MatchHandler.ExecuteRound), new Type[] { typeof(int) })]
     public static class MatchHandler_ExecuteNextRound_Patch
     {
         private static void Postfix()
@@ -128,9 +130,10 @@ namespace DieHarder
                     if (StructureStorage.KillDelayed.Contains(__instance)) return true;
 
                     Core.Instance.StructureKillStorages.Add(new StructureKillStorage(__instance, killVelocity, playSFX, playVFX, networked));
-                    Rigidbody rb = __instance.GetComponentInChildren<Rigidbody>();
+                    Rigidbody rb = __instance.rigidBody;
                     rb.velocity = Vector3.zero;
                     rb.angularVelocity = Vector3.zero;
+                    rb.isKinematic = true;
                     foreach (Collider c in __instance.GetComponentsInChildren<Collider>())
                         c.enabled = false;
 
@@ -224,9 +227,11 @@ namespace DieHarder
 
             try
             {
+                if (__instance?.parentController == null) throw new Exception("PlayerHealth set has a null __instance");
+
                 if (newHealth < previousHealth)
                 {
-                    Core.Instance.OnPlayerDamage(__instance?.parentController, newHealth, previousHealth);
+                    Core.Instance.OnPlayerDamage(__instance.parentController, newHealth, previousHealth);
 
                     if (newHealth <= 0)
                     {
@@ -237,7 +242,7 @@ namespace DieHarder
             catch (Exception e)
             {
                 Debug.Log(e.Message, false, 2);
-                Debug.Log(System.Environment.StackTrace);
+                Debug.Log(Environment.StackTrace);
             }
         }
     }

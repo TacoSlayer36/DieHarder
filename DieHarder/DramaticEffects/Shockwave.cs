@@ -80,7 +80,7 @@ namespace DieHarder
                     structureKillStorage.Kill();
                 }
                 Core.Instance.StructureKillStorages.Clear();
-                StructureStorage.KillDelayed.Clear();
+                StructureStorage.ClearKillDelayedStructures();
                 GameObject.Destroy(gameObject);
             }
 
